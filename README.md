@@ -56,6 +56,13 @@ Jika koneksi database ok akan mengembalikan:
 - `GET /api/hazard/monthly?site=ADMO`
 - `GET /api/hazard/follow-up`
 - `GET /api/leading-gauges`
+- `GET /api/safety-kpis`
+- `GET /api/monitoring-summary`
+- `GET /api/strategic-score`
+- `GET /api/weather`
+- `GET /api/announcements`
+- `GET /api/dashboard-meta`
+- `GET /api/calendar-meta`
 - `GET /api/calendar-events`
 
 Catatan:
@@ -201,6 +208,66 @@ Jika `color` kosong, backend akan memberi warna default.
 | type  | varchar | FAI, EI, etc |
 | site  | varchar | ADMO/MACO/SERA |
 | color | varchar | nama warna |
+
+### 15. `vw_safety_kpis`
+
+| kolom | tipe    | keterangan |
+|-------|---------|------------|
+| key   | varchar | FATALITY/KAPTK/LTI/MTI/FAI/PD/EI/NM |
+| value | int     | nilai KPI |
+
+### 16. `vw_monitoring_summary`
+
+| kolom   | tipe    | keterangan |
+|---------|---------|------------|
+| key     | varchar | FATIGUE/OVERSPEED/DISTRACTION/PROXIMITY |
+| value   | int     | nilai |
+| unit    | varchar | Today/Events/Cases/etc |
+| trend   | varchar | up/down/flat |
+| subtext | varchar | teks ringkas |
+
+### 17. `vw_strategic_score`
+
+| kolom   | tipe    | keterangan |
+|---------|---------|------------|
+| score   | int     | score |
+| label   | varchar | Moderate/High/etc |
+| subtext | varchar | deskripsi |
+| color   | varchar | green/yellow/red |
+
+### 18. `vw_weather_status`
+
+| kolom       | tipe    | keterangan |
+|-------------|---------|------------|
+| temperature | decimal | suhu (C) |
+| condition   | varchar | kondisi |
+| wind_speed  | decimal | kecepatan angin (km/h) |
+| humidity    | int     | kelembapan (%) |
+| alert_text  | varchar | pesan alert |
+| alert_level | varchar | high/medium/low |
+
+### 19. `vw_announcements`
+
+| kolom      | tipe    | keterangan |
+|------------|---------|------------|
+| message    | varchar | pesan berjalan |
+| sort_order | int     | urutan |
+
+### 20. `vw_dashboard_meta`
+
+| kolom       | tipe    | keterangan |
+|-------------|---------|------------|
+| last_update | datetime | waktu update terakhir |
+
+### 21. `vw_calendar_meta`
+
+| kolom        | tipe    | keterangan |
+|--------------|---------|------------|
+| year         | int     | tahun |
+| month        | int     | 1-12 |
+| month_name   | varchar | JANUARY, FEBRUARY, ... |
+| start_day    | int     | index hari (0=Mon) |
+| days_in_month| int     | jumlah hari |
 
 ## Catatan Implementasi
 

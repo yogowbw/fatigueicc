@@ -267,6 +267,106 @@ const getLeadingGauges = async () => {
   }));
 };
 
+const getSafetyKpis = async () => {
+  const rows = await query(`SELECT key, value FROM ${config.views.safetyKpis}`);
+
+  return rows.reduce((acc, row) => {
+    const key = String(row.key || row.name || '')
+      .trim()
+      .toUpperCase();
+    if (key) {
+      acc[key] = toNumber(row.value);
+    }
+    return acc;
+  }, {});
+};
+
+const getMonitoringSummary = async () => {
+  const rows = await query(
+    `SELECT key, value, unit, trend, subtext FROM ${config.views.monitoringSummary}`
+  );
+
+  return rows.map((row) => ({
+    key: row.key,
+    value: toNumber(row.value),
+    unit: row.unit,
+    trend: row.trend,
+    subtext: row.subtext
+  }));
+};
+
+const getStrategicScore = async () => {
+  const rows = await query(
+    `SELECT TOP 1 score, label, subtext, color FROM ${config.views.strategicScore}`
+  );
+  const row = rows[0] || {};
+
+  return {
+    score: toNumber(row.score),
+    label: row.label || '',
+    subtext: row.subtext || '',
+    color: row.color || 'yellow'
+  };
+};
+
+const getWeatherStatus = async () => {
+  const rows = await query(
+    `SELECT TOP 1 temperature, condition, wind_speed, humidity, alert_text, alert_level FROM ${config.views.weatherStatus}`
+  );
+  const row = rows[0] || {};
+
+  return {
+    temperature: toNumber(row.temperature),
+    condition: row.condition || '',
+    windSpeed: toNumber(row.wind_speed),
+    humidity: toNumber(row.humidity),
+    alertText: row.alert_text || '',
+    alertLevel: row.alert_level || 'high'
+  };
+};
+
+const getAnnouncements = async () => {
+  const rows = await query(
+    `SELECT message, sort_order FROM ${config.views.announcements} ORDER BY sort_order`
+  );
+  return rows.map((row) => ({
+    message: row.message
+  }));
+};
+
+const getDashboardMeta = async () => {
+  const rows = await query(
+    `SELECT TOP 1 last_update FROM ${config.views.dashboardMeta}`
+  );
+  const row = rows[0] || {};
+  const lastUpdate = row.last_update ? new Date(row.last_update).toISOString() : null;
+
+  return {
+    lastUpdate
+  };
+};
+
+const getCalendarMeta = async () => {
+  const rows = await query(
+    `SELECT TOP 1 year, month, month_name, start_day, days_in_month FROM ${config.views.calendarMeta}`
+  );
+  const row = rows[0] || {};
+
+  return {
+    year: row.year ? toNumber(row.year) : null,
+    month: row.month ? toNumber(row.month) : null,
+    monthName: row.month_name || null,
+    startDay:
+      row.start_day === null || row.start_day === undefined
+        ? null
+        : toNumber(row.start_day),
+    daysInMonth:
+      row.days_in_month === null || row.days_in_month === undefined
+        ? null
+        : toNumber(row.days_in_month)
+  };
+};
+
 const getCalendarEvents = async () => {
   const rows = await query(
     `SELECT day, type, site, color FROM ${config.views.calendarEvents} ORDER BY day`
@@ -304,7 +404,14 @@ const getDashboardData = async () => {
     hazardMonthlyData,
     hazardFollowUpData,
     leadingGaugeData,
-    calendarEvents
+    calendarEvents,
+    safetyKpis,
+    monitoringSummary,
+    strategicScore,
+    weather,
+    announcements,
+    dashboardMeta,
+    calendarMeta
   ] = await Promise.all([
     getSiteTrend(),
     getAifr(),
@@ -319,7 +426,14 @@ const getDashboardData = async () => {
     getHazardMonthly(),
     getHazardFollowUp(),
     getLeadingGauges(),
-    getCalendarEvents()
+    getCalendarEvents(),
+    getSafetyKpis(),
+    getMonitoringSummary(),
+    getStrategicScore(),
+    getWeatherStatus(),
+    getAnnouncements(),
+    getDashboardMeta(),
+    getCalendarMeta()
   ]);
 
   return {
@@ -339,7 +453,14 @@ const getDashboardData = async () => {
     hazardMonthlySERA: hazardMonthlyData.SERA || [],
     hazardFollowUpData,
     leadingGaugeData,
-    calendarEvents
+    calendarEvents,
+    safetyKpis,
+    monitoringSummary,
+    strategicScore,
+    weather,
+    announcements,
+    dashboardMeta,
+    calendarMeta
   };
 };
 
@@ -357,6 +478,13 @@ module.exports = {
   getHazardMonthly,
   getHazardFollowUp,
   getLeadingGauges,
+  getSafetyKpis,
+  getMonitoringSummary,
+  getStrategicScore,
+  getWeatherStatus,
+  getAnnouncements,
+  getDashboardMeta,
+  getCalendarMeta,
   getCalendarEvents,
   getDashboardData
 };

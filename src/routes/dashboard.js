@@ -15,6 +15,13 @@ const {
   getHazardMonthly,
   getHazardFollowUp,
   getLeadingGauges,
+  getSafetyKpis,
+  getMonitoringSummary,
+  getStrategicScore,
+  getWeatherStatus,
+  getAnnouncements,
+  getDashboardMeta,
+  getCalendarMeta,
   getCalendarEvents
 } = require('../services/dashboardService');
 const {
@@ -136,6 +143,55 @@ router.get(
   '/leading-gauges',
   asyncHandler(async (req, res) => {
     res.json(await getLeadingGauges());
+  })
+);
+
+router.get(
+  '/safety-kpis',
+  asyncHandler(async (req, res) => {
+    res.json(await getSafetyKpis());
+  })
+);
+
+router.get(
+  '/monitoring-summary',
+  asyncHandler(async (req, res) => {
+    res.json(await getMonitoringSummary());
+  })
+);
+
+router.get(
+  '/strategic-score',
+  asyncHandler(async (req, res) => {
+    res.json(await getStrategicScore());
+  })
+);
+
+router.get(
+  '/weather',
+  asyncHandler(async (req, res) => {
+    res.json(await getWeatherStatus());
+  })
+);
+
+router.get(
+  '/announcements',
+  asyncHandler(async (req, res) => {
+    res.json(await getAnnouncements());
+  })
+);
+
+router.get(
+  '/dashboard-meta',
+  asyncHandler(async (req, res) => {
+    res.json(await getDashboardMeta());
+  })
+);
+
+router.get(
+  '/calendar-meta',
+  asyncHandler(async (req, res) => {
+    res.json(await getCalendarMeta());
   })
 );
 

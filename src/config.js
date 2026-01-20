@@ -81,6 +81,34 @@ const config = {
     calendarEvents: sanitizeIdentifier(
       process.env.SQL_VIEW_CALENDAR_EVENTS || 'vw_calendar_events',
       'SQL_VIEW_CALENDAR_EVENTS'
+    ),
+    safetyKpis: sanitizeIdentifier(
+      process.env.SQL_VIEW_SAFETY_KPIS || 'vw_safety_kpis',
+      'SQL_VIEW_SAFETY_KPIS'
+    ),
+    monitoringSummary: sanitizeIdentifier(
+      process.env.SQL_VIEW_MONITORING_SUMMARY || 'vw_monitoring_summary',
+      'SQL_VIEW_MONITORING_SUMMARY'
+    ),
+    strategicScore: sanitizeIdentifier(
+      process.env.SQL_VIEW_STRATEGIC_SCORE || 'vw_strategic_score',
+      'SQL_VIEW_STRATEGIC_SCORE'
+    ),
+    weatherStatus: sanitizeIdentifier(
+      process.env.SQL_VIEW_WEATHER_STATUS || 'vw_weather_status',
+      'SQL_VIEW_WEATHER_STATUS'
+    ),
+    announcements: sanitizeIdentifier(
+      process.env.SQL_VIEW_ANNOUNCEMENTS || 'vw_announcements',
+      'SQL_VIEW_ANNOUNCEMENTS'
+    ),
+    dashboardMeta: sanitizeIdentifier(
+      process.env.SQL_VIEW_DASHBOARD_META || 'vw_dashboard_meta',
+      'SQL_VIEW_DASHBOARD_META'
+    ),
+    calendarMeta: sanitizeIdentifier(
+      process.env.SQL_VIEW_CALENDAR_META || 'vw_calendar_meta',
+      'SQL_VIEW_CALENDAR_META'
     )
   }
 };
