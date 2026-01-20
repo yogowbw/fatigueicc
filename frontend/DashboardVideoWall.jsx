@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   BarChart,
   Bar,
@@ -231,6 +231,19 @@ const resolveApiBase = () => {
   return base.endsWith('/') ? base.slice(0, -1) : base;
 };
 
+const resolveRefreshInterval = () => {
+  const viteInterval =
+    typeof import.meta !== 'undefined' && import.meta.env
+      ? import.meta.env.VITE_DASHBOARD_REFRESH_MS
+      : '';
+  const craInterval =
+    typeof process !== 'undefined' && process.env
+      ? process.env.REACT_APP_DASHBOARD_REFRESH_MS
+      : '';
+  const parsed = Number.parseInt(viteInterval || craInterval, 10);
+  return Number.isNaN(parsed) ? 15000 : Math.max(parsed, 2000);
+};
+
 const buildApiUrl = (base, path) => (base ? `${base}${path}` : path);
 
 const formatLastUpdate = (value) => {
@@ -253,6 +266,7 @@ const formatLastUpdate = (value) => {
 };
 
 const API_BASE = resolveApiBase();
+const REFRESH_INTERVAL_MS = resolveRefreshInterval();
 
 // --- COMPONENTS ---
 const CalendarActivity = ({ isDark, events = [], meta = {}, legend = DEFAULT_CALENDAR_LEGEND }) => {
@@ -981,37 +995,56 @@ export default function DashboardVideoWall() {
   const [dashboardData, setDashboardData] = useState(DEFAULT_DASHBOARD_DATA);
   const [dataError, setDataError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const hasLoadedRef = useRef(false);
 
   useEffect(() => {
-    const controller = new AbortController();
+    let isMounted = true;
+    let activeController = null;
 
     const fetchDashboard = async () => {
-      setIsLoading(true);
+      if (!hasLoadedRef.current) {
+        setIsLoading(true);
+      }
+      if (activeController) {
+        activeController.abort();
+      }
+      activeController = new AbortController();
       try {
         const response = await fetch(buildApiUrl(API_BASE, '/api/dashboard'), {
-          signal: controller.signal
+          signal: activeController.signal
         });
         if (!response.ok) {
           throw new Error(`Request failed: ${response.status}`);
         }
 
         const payload = await response.json();
-        setDashboardData((prev) => ({ ...prev, ...payload }));
-        setDataError('');
+        if (isMounted) {
+          setDashboardData((prev) => ({ ...prev, ...payload }));
+          setDataError('');
+          hasLoadedRef.current = true;
+        }
       } catch (error) {
-        if (error.name !== 'AbortError') {
+        if (error.name !== 'AbortError' && isMounted) {
           console.error('Failed to load dashboard data', error);
           setDataError(error.message || 'Failed to load dashboard data');
         }
       } finally {
-        if (!controller.signal.aborted) {
+        if (isMounted && !activeController?.signal?.aborted) {
           setIsLoading(false);
         }
       }
     };
 
     fetchDashboard();
-    return () => controller.abort();
+    const intervalId = setInterval(fetchDashboard, REFRESH_INTERVAL_MS);
+
+    return () => {
+      isMounted = false;
+      if (activeController) {
+        activeController.abort();
+      }
+      clearInterval(intervalId);
+    };
   }, []);
 
   const handleZoneChange = (zone) => {
