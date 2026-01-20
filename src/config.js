@@ -12,6 +12,14 @@ const config = {
   cors: {
     origins: parseList(process.env.CORS_ORIGIN)
   },
+  sse: {
+    dashboardIntervalMs: Math.max(
+      parseIntOrDefault(process.env.DASHBOARD_STREAM_INTERVAL_MS, 5000),
+      1000
+    ),
+    keepAliveMs: Math.max(parseIntOrDefault(process.env.SSE_KEEP_ALIVE_MS, 15000), 5000),
+    retryMs: Math.max(parseIntOrDefault(process.env.SSE_RETRY_MS, 3000), 1000)
+  },
   sql: {
     server: process.env.SQL_SERVER,
     database: process.env.SQL_DATABASE,

@@ -267,6 +267,7 @@ const formatLastUpdate = (value) => {
 
 const API_BASE = resolveApiBase();
 const REFRESH_INTERVAL_MS = resolveRefreshInterval();
+const SSE_FALLBACK_TIMEOUT_MS = 10000;
 
 // --- COMPONENTS ---
 const CalendarActivity = ({ isDark, events = [], meta = {}, legend = DEFAULT_CALENDAR_LEGEND }) => {
@@ -1000,6 +1001,9 @@ export default function DashboardVideoWall() {
   useEffect(() => {
     let isMounted = true;
     let activeController = null;
+    let pollingIntervalId = null;
+    let eventSource = null;
+    let fallbackTimeoutId = null;
 
     const fetchDashboard = async () => {
       if (!hasLoadedRef.current) {
@@ -1035,15 +1039,90 @@ export default function DashboardVideoWall() {
       }
     };
 
-    fetchDashboard();
-    const intervalId = setInterval(fetchDashboard, REFRESH_INTERVAL_MS);
+    const startPolling = () => {
+      if (pollingIntervalId) {
+        return;
+      }
+      fetchDashboard();
+      pollingIntervalId = setInterval(fetchDashboard, REFRESH_INTERVAL_MS);
+    };
+
+    const startSse = () => {
+      if (typeof EventSource === 'undefined') {
+        startPolling();
+        return;
+      }
+
+      if (!hasLoadedRef.current) {
+        setIsLoading(true);
+      }
+
+      eventSource = new EventSource(buildApiUrl(API_BASE, '/api/dashboard/stream'));
+
+      eventSource.addEventListener('dashboard', (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (isMounted) {
+            setDashboardData((prev) => ({ ...prev, ...payload }));
+            setDataError('');
+            hasLoadedRef.current = true;
+            setIsLoading(false);
+          }
+          if (fallbackTimeoutId) {
+            clearTimeout(fallbackTimeoutId);
+            fallbackTimeoutId = null;
+          }
+        } catch (error) {
+          if (isMounted) {
+            setDataError('Invalid SSE payload');
+          }
+        }
+      });
+
+      eventSource.addEventListener('server-error', (event) => {
+        if (!isMounted) {
+          return;
+        }
+        try {
+          const payload = JSON.parse(event.data);
+          setDataError(payload.message || 'Server error');
+        } catch (error) {
+          setDataError('Server error');
+        }
+      });
+
+      eventSource.onerror = () => {
+        if (isMounted && !hasLoadedRef.current) {
+          setDataError('SSE connection error');
+        }
+      };
+
+      fallbackTimeoutId = setTimeout(() => {
+        if (!hasLoadedRef.current && isMounted) {
+          if (eventSource) {
+            eventSource.close();
+          }
+          startPolling();
+        }
+      }, SSE_FALLBACK_TIMEOUT_MS);
+    };
+
+    startSse();
 
     return () => {
       isMounted = false;
+      if (eventSource) {
+        eventSource.close();
+      }
       if (activeController) {
         activeController.abort();
       }
-      clearInterval(intervalId);
+      if (pollingIntervalId) {
+        clearInterval(pollingIntervalId);
+      }
+      if (fallbackTimeoutId) {
+        clearTimeout(fallbackTimeoutId);
+      }
     };
   }, []);
 

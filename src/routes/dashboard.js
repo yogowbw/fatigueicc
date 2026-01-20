@@ -24,6 +24,7 @@ const {
   getCalendarMeta,
   getCalendarEvents
 } = require('../services/dashboardService');
+const { addClient, removeClient } = require('../services/dashboardStream');
 const {
   normalizeZone,
   normalizeSite,
@@ -42,6 +43,25 @@ router.get(
     res.json(data);
   })
 );
+
+router.get('/dashboard/stream', async (req, res) => {
+  res.status(200);
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  req.on('close', () => {
+    removeClient(res);
+  });
+
+  try {
+    await addClient(res);
+  } catch (error) {
+    removeClient(res);
+  }
+});
 
 router.get(
   '/site-trends',

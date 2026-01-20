@@ -42,6 +42,8 @@ Jika koneksi database ok akan mengembalikan:
 
 - `GET /api/dashboard`  
   Mengembalikan semua dataset sekaligus.
+- `GET /api/dashboard/stream`  
+  SSE untuk update real time tanpa refresh.
 
 - `GET /api/site-trends?zone=ALL`
 - `GET /api/aifr`
@@ -69,6 +71,22 @@ Catatan:
 - Jika `zone` atau `site` tidak dikirim, endpoint akan mengembalikan data
   untuk semua zona/site (object dengan key nama zona).
 - Format `date` harus `YYYY-MM-DD`.
+
+## Realtime (SSE)
+
+Backend menyediakan Server Sent Events (SSE) di:
+
+```
+GET /api/dashboard/stream
+```
+
+Konfigurasi interval bisa diatur lewat `.env`:
+
+```
+DASHBOARD_STREAM_INTERVAL_MS=5000
+SSE_KEEP_ALIVE_MS=15000
+SSE_RETRY_MS=3000
+```
 
 ## Kontrak View SQL Server
 
