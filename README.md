@@ -327,6 +327,15 @@ Catatan:
 - Jika realtime API lain sudah siap, set `SENSOR_API_MODE=real` dan isi `SENSOR_API_BASE_URL`.
 - Mapping data realtime ke struktur frontend bisa diubah di `src/services/dashboardService.js`.
 - `TIME_ZONE` menentukan tanggal/waktu yang dipakai backend (default `Asia/Jakarta`).
+- Untuk kebutuhan **total sensor on/off**, saat ini backend memakai **mock data** dari env:
+  ```
+  DEVICE_HEALTH_MODE=mock
+  DEVICE_HEALTH_TOTAL=142
+  DEVICE_HEALTH_ONLINE=135
+  DEVICE_HEALTH_OFFLINE=7
+  DEVICE_HEALTH_COVERAGE=95
+  ```
+  Nanti jika ada API device status, bisa diganti ke mode `cache` atau API khusus.
 
 ## Catatan Deploy ke Azure App Service + SQL MI
 

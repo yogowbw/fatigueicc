@@ -51,6 +51,15 @@ const config = {
     : 75,
   timeZone: process.env.TIME_ZONE || 'Asia/Jakarta',
   defaultArea: process.env.DEFAULT_AREA || 'Mining',
+  deviceHealthMode:
+    process.env.DEVICE_HEALTH_MODE ||
+    (process.env.INTEGRATOR_BASE_URL ? 'mock' : 'cache'),
+  deviceHealth: {
+    total: toInt(process.env.DEVICE_HEALTH_TOTAL, 142),
+    online: toInt(process.env.DEVICE_HEALTH_ONLINE, 135),
+    offline: toInt(process.env.DEVICE_HEALTH_OFFLINE, 7),
+    coverage: toInt(process.env.DEVICE_HEALTH_COVERAGE, 95)
+  },
   sensorApiMode:
     process.env.SENSOR_API_MODE ||
     (process.env.INTEGRATOR_BASE_URL

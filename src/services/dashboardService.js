@@ -89,6 +89,26 @@ const computeDeviceHealth = (readings) => {
   return { total, online, offline, coverage };
 };
 
+const resolveDeviceHealth = (readings) => {
+  if (config.deviceHealthMode === 'mock') {
+    const total = config.deviceHealth.total;
+    const online = config.deviceHealth.online;
+    const offline =
+      Number.isFinite(config.deviceHealth.offline)
+        ? config.deviceHealth.offline
+        : Math.max(0, total - online);
+    const coverage = Number.isFinite(config.deviceHealth.coverage)
+      ? config.deviceHealth.coverage
+      : total > 0
+        ? Math.round((online / total) * 100)
+        : 0;
+
+    return { total, online, offline, coverage };
+  }
+
+  return computeDeviceHealth(readings);
+};
+
 const computeStats = (alerts) => {
   const totalToday = alerts.length;
   const activeOpen = alerts.filter((alert) => alert.status === 'Open').length;
@@ -228,11 +248,12 @@ const fetchLastReading = async (sensorId) => {
   };
 };
 
-const createDashboardService = ({ cache, pollingStatus }) => {
+const createDashboardService = ({ cache, eventCache, pollingStatus }) => {
   const getOverview = async () => {
     const snapshot = cache.getSnapshot();
     const sensors = snapshot.sensors;
-    const alerts = sensors.map(toAlert);
+    const eventReadings = eventCache ? eventCache.getAll() : sensors;
+    const alerts = eventReadings.map(toAlert);
     const now = new Date();
 
     return {
@@ -240,9 +261,10 @@ const createDashboardService = ({ cache, pollingStatus }) => {
         serverTime: now.toISOString(),
         serverDate: getTodayLocal(),
         refreshMs: config.sensorPollIntervalMs,
-        polling: pollingStatus ? pollingStatus() : null
+        polling: pollingStatus ? pollingStatus() : null,
+        eventCount: eventReadings.length
       },
-      deviceHealth: computeDeviceHealth(sensors),
+      deviceHealth: resolveDeviceHealth(sensors),
       sensors,
       alerts,
       stats: computeStats(alerts),

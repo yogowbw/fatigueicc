@@ -9,14 +9,22 @@ const pollingState = {
   lastDurationMs: null
 };
 
-const pollOnce = async (cache) => {
+const pollOnce = async (cache, eventsCache) => {
   const start = Date.now();
   try {
     const readings = await fetchAllSensors(config.sensorIds);
     const receivedAt = new Date().toISOString();
-    readings.forEach((reading) =>
-      cache.upsert({ ...reading, receivedAt, source: 'realtime' })
-    );
+    const normalized = readings.map((reading) => ({
+      ...reading,
+      receivedAt,
+      source: reading.source || 'realtime'
+    }));
+
+    normalized.forEach((reading) => cache.upsert(reading));
+
+    if (eventsCache && config.sensorApiMode === 'integrator') {
+      eventsCache.replace(normalized);
+    }
 
     pollingState.lastSuccessAt = receivedAt;
     pollingState.lastErrorAt = null;
@@ -28,14 +36,14 @@ const pollOnce = async (cache) => {
   }
 };
 
-const startRealtimePolling = (cache) => {
+const startRealtimePolling = (cache, eventsCache) => {
   if (pollingState.isRunning) return null;
 
   pollingState.isRunning = true;
-  pollOnce(cache);
+  pollOnce(cache, eventsCache);
 
   const timer = setInterval(() => {
-    pollOnce(cache);
+    pollOnce(cache, eventsCache);
   }, config.sensorPollIntervalMs);
 
   return () => {
