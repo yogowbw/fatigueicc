@@ -69,6 +69,7 @@ const config = {
     filterValue: process.env.INTEGRATOR_FILTER_VALUE || 'true',
     rangeDateColumn: process.env.INTEGRATOR_RANGE_DATE_COLUMN || 'device_time'
   },
+  debugIntegrator: toBool(process.env.INTEGRATOR_DEBUG, false),
   sql: {
     connectionString: process.env.SQL_CONNECTION_STRING || '',
     user: process.env.SQL_USER || 'yogo',

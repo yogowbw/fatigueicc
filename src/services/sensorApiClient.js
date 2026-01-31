@@ -58,16 +58,47 @@ const generateMockReading = (sensorId) => {
   });
 };
 
+const logIntegratorDebug = (...args) => {
+  if (!config.debugIntegrator) return;
+  console.log('[integrator]', ...args);
+};
+
+const redactPayload = (payload) => {
+  if (!payload || typeof payload !== 'object') return payload;
+  const clone = { ...payload };
+  if ('password' in clone) clone.password = '***';
+  return clone;
+};
+
+const parseJsonSafe = async (response) => {
+  const text = await response.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    return text;
+  }
+};
+
 const fetchWithTimeout = async (url, timeoutMs, options = {}) => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const { returnResponseMeta, ...fetchOptions } = options;
 
   try {
-    const response = await fetch(url, { ...options, signal: controller.signal });
+    const response = await fetch(url, { ...fetchOptions, signal: controller.signal });
+    const data = await parseJsonSafe(response);
     if (!response.ok) {
-      throw new Error(`Sensor API error: ${response.status} ${response.statusText}`);
+      const error = new Error(
+        `Sensor API error: ${response.status} ${response.statusText}`
+      );
+      error.status = response.status;
+      error.data = data;
+      throw error;
     }
-    return await response.json();
+    return returnResponseMeta
+      ? { data, status: response.status }
+      : data;
   } finally {
     clearTimeout(timer);
   }
@@ -186,15 +217,48 @@ const fetchIntegratorEvents = async () => {
     payload.password = config.integrator.password;
   }
 
-  const data = await fetchWithTimeout(
-    config.integrator.baseUrl,
-    config.sensorApiTimeoutMs,
-    {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload)
-    }
-  );
+  logIntegratorDebug('Request', {
+    url: config.integrator.baseUrl,
+    authMode: config.integrator.authMode,
+    payload: redactPayload(payload)
+  });
+
+  let responseMeta;
+  try {
+    responseMeta = await fetchWithTimeout(
+      config.integrator.baseUrl,
+      config.sensorApiTimeoutMs,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+        returnResponseMeta: true
+      }
+    );
+  } catch (error) {
+    logIntegratorDebug('Error', {
+      status: error.status,
+      message: error.message,
+      response: error.data && typeof error.data === 'object'
+        ? {
+            code: error.data.code,
+            success: error.data.success,
+            message: error.data.message
+          }
+        : error.data
+    });
+    throw error;
+  }
+
+  const data = responseMeta?.data;
+
+  logIntegratorDebug('Response', {
+    status: responseMeta?.status,
+    success: data?.success,
+    message: data?.message,
+    count: data?.data?.list?.length || 0,
+    pagination: data?.data?.pagination || null
+  });
 
   if (!data || data.success === false) {
     throw new Error(data?.message || 'Integrator API request failed');
