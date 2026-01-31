@@ -1,9 +1,9 @@
 -- Create database (optional)
--- CREATE DATABASE DashboardDB;
+-- CREATE DATABASE icc;
 -- GO
 
 -- Use database
--- USE DashboardDB;
+-- USE icc;
 -- GO
 
 CREATE TABLE sensor_readings (

@@ -48,10 +48,10 @@ const config = {
   sensorIds,
   sql: {
     connectionString: process.env.SQL_CONNECTION_STRING || '',
-    user: process.env.SQL_USER || 'sa',
-    password: process.env.SQL_PASSWORD || 'YourStrong!Passw0rd',
+    user: process.env.SQL_USER || 'yogo',
+    password: process.env.SQL_PASSWORD || 'P@$$w0rd123!@#',
     server: process.env.SQL_SERVER || 'localhost',
-    database: process.env.SQL_DATABASE || 'DashboardDB',
+    database: process.env.SQL_DATABASE || 'icc',
     options: {
       encrypt: toBool(process.env.SQL_ENCRYPT, false),
       trustServerCertificate: toBool(process.env.SQL_TRUST_CERT, true)
