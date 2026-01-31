@@ -1,6 +1,7 @@
 const { config } = require('./config/env');
 const { createApp } = require('./app');
 const { sensorCache } = require('./cache/sensorCache');
+const { eventCache } = require('./cache/eventCache');
 const { startRealtimePolling } = require('./services/realtimePollingService');
 const { startPersistenceJob } = require('./services/persistenceService');
 const { getPool } = require('./db/sqlServer');
@@ -15,8 +16,8 @@ const start = async () => {
     console.warn('SQL Server connection failed. API will still run:', error.message || error);
   }
 
-  startRealtimePolling(sensorCache);
-  startPersistenceJob(sensorCache);
+  startRealtimePolling(sensorCache, eventCache);
+  startPersistenceJob(sensorCache, eventCache);
 
   app.listen(config.port, () => {
     console.log(`Dashboard API running on http://localhost:${config.port}`);

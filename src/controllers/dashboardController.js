@@ -1,9 +1,11 @@
 const { sensorCache } = require('../cache/sensorCache');
+const { eventCache } = require('../cache/eventCache');
 const { createDashboardService } = require('../services/dashboardService');
 const { getPollingStatus } = require('../services/realtimePollingService');
 
 const dashboardService = createDashboardService({
   cache: sensorCache,
+  eventCache,
   pollingStatus: getPollingStatus
 });
 

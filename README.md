@@ -51,7 +51,15 @@ database/
    ```bash
    cp .env.example .env
    ```
-3. Jalankan:
+3. Pastikan kredensial SQL lokal sesuai:
+   ```
+   SQL_DATABASE=icc
+   SQL_USER=yogo
+   SQL_PASSWORD="P@$$w0rd123!@#"
+   SQL_SERVER=localhost
+   TIME_ZONE=Asia/Jakarta
+   ```
+4. Jalankan:
    ```bash
    npm install
    npm run dev
@@ -59,7 +67,96 @@ database/
 
 API akan berjalan di `http://localhost:3000`.
 
+## Tahap awal: cek data dari API -> SQL (sebelum mapping ke frontend)
+
+Jika ingin tahap awalnya hanya memastikan data masuk ke SQL:
+
+1. Pastikan `.env` sudah diisi dengan SQL lokal dan API sensor:
+   ```
+   SENSOR_API_MODE=integrator
+   INTEGRATOR_BASE_URL=https://api-platform-integrator.transtrack.co/api/v1/events/
+   INTEGRATOR_USERNAME=your_username
+   INTEGRATOR_PASSWORD=your_password
+   INTEGRATOR_AUTH_MODE=basic
+   ```
+   (Jika belum ada API sensor, gunakan `SENSOR_API_MODE=mock` untuk simulasi.)
+
+2. Jalankan backend:
+   ```bash
+   npm run dev
+   ```
+
+3. Tunggu 1-2 menit agar job persist menulis data ke SQL.
+
+4. Cek data di SQL Server:
+   ```sql
+   SELECT TOP 20 *
+   FROM sensor_readings
+   ORDER BY recorded_at DESC;
+
+   SELECT COUNT(*) AS total_rows
+   FROM sensor_readings;
+   ```
+
+Jika data sudah masuk ke SQL, barulah lanjut ke mapping ke frontend.
+
 ## Endpoint
+
+### Petunjuk penggunaan API (untuk pemula)
+
+Konsep dasar:
+- **Endpoint** adalah alamat URL yang diakses.
+- **Request** adalah permintaan ke endpoint.
+- **Response** adalah data JSON yang dikirim balik oleh backend.
+
+Cara paling gampang mencoba:
+
+1. Cek server hidup:
+   ```bash
+   curl http://localhost:3000/health
+   ```
+
+2. Ambil data dashboard:
+   ```bash
+   curl http://localhost:3000/api/dashboard/overview
+   ```
+
+3. Ambil detail 1 sensor:
+   ```bash
+   curl http://localhost:3000/api/dashboard/sensor/DT-402
+   ```
+
+### Catatan Integrator API (Transtrack)
+Backend akan mengirim request **POST** ke endpoint integrator dengan body:
+```
+range_date_start = tanggal hari ini 00:00:00 (sesuai TIME_ZONE)
+range_date_end   = waktu sekarang (sesuai TIME_ZONE)
+range_date_columns = device_time (default)
+page = 1
+page_size = INTEGRATOR_PAGE_SIZE
+filter_columns = INTEGRATOR_FILTER_COLUMNS
+filter_value = INTEGRATOR_FILTER_VALUE
+```
+
+Jika autentikasi memakai Basic Auth, isi:
+```
+INTEGRATOR_AUTH_MODE=basic
+INTEGRATOR_USERNAME=...
+INTEGRATOR_PASSWORD=...
+```
+
+Jika ingin **tanpa filter**, kosongkan:
+```
+INTEGRATOR_FILTER_COLUMNS=
+INTEGRATOR_FILTER_VALUE=
+```
+
+### Mode Debug (lihat error log integrator)
+Aktifkan debug log jika ingin melihat request/response summary:
+```
+INTEGRATOR_DEBUG=true
+```
+Log akan muncul di terminal saat backend berjalan.
 
 ### GET /api/dashboard/overview
 Response sudah siap untuk frontend (tidak perlu transform tambahan).
@@ -69,6 +166,7 @@ Contoh response:
 {
   "meta": {
     "serverTime": "2026-01-31T10:00:00.000Z",
+    "serverDate": "2026-01-31",
     "refreshMs": 1000,
     "polling": {
       "isRunning": true,
@@ -107,6 +205,7 @@ Contoh response:
       "area": "Mining",
       "location": "Manado - Front A",
       "time": "09:59:59",
+      "date": "2026-01-31",
       "status": "Open",
       "speed": "25 km/h",
       "count": 1,
@@ -138,6 +237,7 @@ Contoh response:
       "area": "Mining",
       "location": "Pit Utara",
       "time": "09:10:00",
+      "date": "2026-01-31",
       "status": "Open",
       "speed": "0 km/h",
       "count": 2,
@@ -153,6 +253,7 @@ Contoh response:
 {
   "meta": {
     "serverTime": "2026-01-31T10:00:00.000Z",
+    "serverDate": "2026-01-31",
     "lookbackMinutes": 60,
     "source": "cache"
   },
@@ -173,6 +274,7 @@ Contoh response:
     "area": "Mining",
     "location": "Manado - Front A",
     "time": "09:59:59",
+    "date": "2026-01-31",
     "status": "Open",
     "speed": "25 km/h",
     "count": 1,
@@ -221,8 +323,19 @@ Lihat `.env.example`.
 
 Catatan:
 - `SENSOR_API_MODE=mock` akan menghasilkan data dummy agar backend bisa langsung dicoba.
-- Jika realtime API asli sudah siap, set `SENSOR_API_MODE=real` dan isi `SENSOR_API_BASE_URL`.
+- Jika memakai API integrator, set `SENSOR_API_MODE=integrator` dan isi `INTEGRATOR_*`.
+- Jika realtime API lain sudah siap, set `SENSOR_API_MODE=real` dan isi `SENSOR_API_BASE_URL`.
 - Mapping data realtime ke struktur frontend bisa diubah di `src/services/dashboardService.js`.
+- `TIME_ZONE` menentukan tanggal/waktu yang dipakai backend (default `Asia/Jakarta`).
+- Untuk kebutuhan **total sensor on/off**, saat ini backend memakai **mock data** dari env:
+  ```
+  DEVICE_HEALTH_MODE=mock
+  DEVICE_HEALTH_TOTAL=142
+  DEVICE_HEALTH_ONLINE=135
+  DEVICE_HEALTH_OFFLINE=7
+  DEVICE_HEALTH_COVERAGE=95
+  ```
+  Nanti jika ada API device status, bisa diganti ke mode `cache` atau API khusus.
 
 ## Catatan Deploy ke Azure App Service + SQL MI
 

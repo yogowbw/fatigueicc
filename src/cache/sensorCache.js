@@ -7,8 +7,23 @@ class SensorCache {
   upsert(reading) {
     if (!reading || !reading.sensorId) return;
 
-    const updatedAt = new Date().toISOString();
     const existing = this.store.get(reading.sensorId) || {};
+    const incomingTimestamp = reading.timestamp
+      ? new Date(reading.timestamp).getTime()
+      : null;
+    const existingTimestamp = existing.timestamp
+      ? new Date(existing.timestamp).getTime()
+      : null;
+
+    if (
+      Number.isFinite(incomingTimestamp) &&
+      Number.isFinite(existingTimestamp) &&
+      incomingTimestamp < existingTimestamp
+    ) {
+      return;
+    }
+
+    const updatedAt = new Date().toISOString();
 
     const entry = {
       sensorId: reading.sensorId,
