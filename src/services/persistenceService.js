@@ -1,5 +1,6 @@
 const { config } = require('../config/env');
 const { sql, getPool } = require('../db/sqlServer');
+const { getEventKey } = require('../cache/eventCache');
 
 const buildBulkTable = (readings) => {
   const table = new sql.Table('sensor_readings');
@@ -28,25 +29,56 @@ const buildBulkTable = (readings) => {
   return table;
 };
 
-const persistSnapshot = async (cache) => {
-  const readings = cache.getAll();
+const persistState = {
+  persistedIds: new Set(),
+  persistedQueue: []
+};
+
+const trackPersistedId = (id) => {
+  if (!id || persistState.persistedIds.has(id)) return;
+  persistState.persistedIds.add(id);
+  persistState.persistedQueue.push(id);
+  if (persistState.persistedQueue.length > 10000) {
+    const oldest = persistState.persistedQueue.shift();
+    persistState.persistedIds.delete(oldest);
+  }
+};
+
+const getReadingsForPersist = (cache, eventsCache) => {
+  if (config.sensorApiMode === 'integrator' && eventsCache) {
+    const readings = eventsCache.getAll();
+    return readings.filter((reading) => {
+      const key = getEventKey(reading);
+      return key && !persistState.persistedIds.has(key);
+    });
+  }
+
+  return cache.getAll();
+};
+
+const persistSnapshot = async (cache, eventsCache) => {
+  const readings = getReadingsForPersist(cache, eventsCache);
   if (!readings.length) return { inserted: 0 };
 
   const pool = await getPool();
   const table = buildBulkTable(readings);
   await pool.request().bulk(table);
 
+  if (config.sensorApiMode === 'integrator') {
+    readings.forEach((reading) => trackPersistedId(getEventKey(reading)));
+  }
+
   return { inserted: readings.length };
 };
 
-const startPersistenceJob = (cache) => {
+const startPersistenceJob = (cache, eventsCache) => {
   let isRunning = false;
 
   const runOnce = async () => {
     if (isRunning) return;
     isRunning = true;
     try {
-      await persistSnapshot(cache);
+      await persistSnapshot(cache, eventsCache);
     } catch (error) {
       console.error('Failed to persist snapshot:', error.message || error);
     } finally {
