@@ -51,7 +51,14 @@ database/
    ```bash
    cp .env.example .env
    ```
-3. Jalankan:
+3. Pastikan kredensial SQL lokal sesuai:
+   ```
+   SQL_DATABASE=icc
+   SQL_USER=yogo
+   SQL_PASSWORD="P@$$w0rd123!@#"
+   SQL_SERVER=localhost
+   ```
+4. Jalankan:
    ```bash
    npm install
    npm run dev
@@ -59,7 +66,61 @@ database/
 
 API akan berjalan di `http://localhost:3000`.
 
+## Tahap awal: cek data dari API -> SQL (sebelum mapping ke frontend)
+
+Jika ingin tahap awalnya hanya memastikan data masuk ke SQL:
+
+1. Pastikan `.env` sudah diisi dengan SQL lokal dan API sensor:
+   ```
+   SENSOR_API_MODE=real
+   SENSOR_API_BASE_URL=http://localhost:YOUR_SENSOR_API_PORT
+   ```
+   (Jika belum ada API sensor, gunakan `SENSOR_API_MODE=mock` untuk simulasi.)
+
+2. Jalankan backend:
+   ```bash
+   npm run dev
+   ```
+
+3. Tunggu 1-2 menit agar job persist menulis data ke SQL.
+
+4. Cek data di SQL Server:
+   ```sql
+   SELECT TOP 20 *
+   FROM sensor_readings
+   ORDER BY recorded_at DESC;
+
+   SELECT COUNT(*) AS total_rows
+   FROM sensor_readings;
+   ```
+
+Jika data sudah masuk ke SQL, barulah lanjut ke mapping ke frontend.
+
 ## Endpoint
+
+### Petunjuk penggunaan API (untuk pemula)
+
+Konsep dasar:
+- **Endpoint** adalah alamat URL yang diakses.
+- **Request** adalah permintaan ke endpoint.
+- **Response** adalah data JSON yang dikirim balik oleh backend.
+
+Cara paling gampang mencoba:
+
+1. Cek server hidup:
+   ```bash
+   curl http://localhost:3000/health
+   ```
+
+2. Ambil data dashboard:
+   ```bash
+   curl http://localhost:3000/api/dashboard/overview
+   ```
+
+3. Ambil detail 1 sensor:
+   ```bash
+   curl http://localhost:3000/api/dashboard/sensor/DT-402
+   ```
 
 ### GET /api/dashboard/overview
 Response sudah siap untuk frontend (tidak perlu transform tambahan).
