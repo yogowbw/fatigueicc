@@ -4,8 +4,26 @@ const { QUERY_SENSOR_HISTORY, QUERY_LAST_READING } = require('../db/queries');
 
 const formatTimeLocal = (isoString) => {
   const date = isoString ? new Date(isoString) : new Date();
-  return date.toLocaleTimeString('en-GB', { hour12: false });
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: config.timeZone,
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  }).format(date);
 };
+
+const formatDateLocal = (isoString) => {
+  const date = isoString ? new Date(isoString) : new Date();
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: config.timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(date);
+};
+
+const getTodayLocal = () => formatDateLocal();
 
 const normalizeAlertStatus = (reading) => {
   const status = String(reading.status || '').toLowerCase();
@@ -49,6 +67,7 @@ const toAlert = (reading) => {
     area,
     location,
     time: meta.time || formatTimeLocal(reading.timestamp),
+    date: meta.date || getTodayLocal(),
     status: alertStatus,
     speed,
     count: meta.count || 1,
@@ -219,6 +238,7 @@ const createDashboardService = ({ cache, pollingStatus }) => {
     return {
       meta: {
         serverTime: now.toISOString(),
+        serverDate: getTodayLocal(),
         refreshMs: config.sensorPollIntervalMs,
         polling: pollingStatus ? pollingStatus() : null
       },
@@ -256,6 +276,7 @@ const createDashboardService = ({ cache, pollingStatus }) => {
     return {
       meta: {
         serverTime: new Date().toISOString(),
+        serverDate: getTodayLocal(),
         lookbackMinutes: config.historyLookbackMinutes,
         source
       },

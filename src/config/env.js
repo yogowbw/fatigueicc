@@ -42,6 +42,7 @@ const config = {
   alertThreshold: Number.isFinite(Number(process.env.ALERT_THRESHOLD))
     ? Number(process.env.ALERT_THRESHOLD)
     : 75,
+  timeZone: process.env.TIME_ZONE || 'Asia/Jakarta',
   sensorApiMode:
     process.env.SENSOR_API_MODE ||
     (process.env.SENSOR_API_BASE_URL ? 'real' : 'mock'),
