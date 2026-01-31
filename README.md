@@ -151,6 +151,13 @@ INTEGRATOR_FILTER_COLUMNS=
 INTEGRATOR_FILTER_VALUE=
 ```
 
+### Mode Debug (lihat error log integrator)
+Aktifkan debug log jika ingin melihat request/response summary:
+```
+INTEGRATOR_DEBUG=true
+```
+Log akan muncul di terminal saat backend berjalan.
+
 ### GET /api/dashboard/overview
 Response sudah siap untuk frontend (tidak perlu transform tambahan).
 
