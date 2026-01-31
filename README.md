@@ -73,8 +73,11 @@ Jika ingin tahap awalnya hanya memastikan data masuk ke SQL:
 
 1. Pastikan `.env` sudah diisi dengan SQL lokal dan API sensor:
    ```
-   SENSOR_API_MODE=real
-   SENSOR_API_BASE_URL=http://localhost:YOUR_SENSOR_API_PORT
+   SENSOR_API_MODE=integrator
+   INTEGRATOR_BASE_URL=https://api-platform-integrator.transtrack.co/api/v1/events/
+   INTEGRATOR_USERNAME=your_username
+   INTEGRATOR_PASSWORD=your_password
+   INTEGRATOR_AUTH_MODE=basic
    ```
    (Jika belum ada API sensor, gunakan `SENSOR_API_MODE=mock` untuk simulasi.)
 
@@ -122,6 +125,31 @@ Cara paling gampang mencoba:
    ```bash
    curl http://localhost:3000/api/dashboard/sensor/DT-402
    ```
+
+### Catatan Integrator API (Transtrack)
+Backend akan mengirim request **POST** ke endpoint integrator dengan body:
+```
+range_date_start = tanggal hari ini 00:00:00 (sesuai TIME_ZONE)
+range_date_end   = waktu sekarang (sesuai TIME_ZONE)
+range_date_columns = device_time (default)
+page = 1
+page_size = INTEGRATOR_PAGE_SIZE
+filter_columns = INTEGRATOR_FILTER_COLUMNS
+filter_value = INTEGRATOR_FILTER_VALUE
+```
+
+Jika autentikasi memakai Basic Auth, isi:
+```
+INTEGRATOR_AUTH_MODE=basic
+INTEGRATOR_USERNAME=...
+INTEGRATOR_PASSWORD=...
+```
+
+Jika ingin **tanpa filter**, kosongkan:
+```
+INTEGRATOR_FILTER_COLUMNS=
+INTEGRATOR_FILTER_VALUE=
+```
 
 ### GET /api/dashboard/overview
 Response sudah siap untuk frontend (tidak perlu transform tambahan).
@@ -288,7 +316,8 @@ Lihat `.env.example`.
 
 Catatan:
 - `SENSOR_API_MODE=mock` akan menghasilkan data dummy agar backend bisa langsung dicoba.
-- Jika realtime API asli sudah siap, set `SENSOR_API_MODE=real` dan isi `SENSOR_API_BASE_URL`.
+- Jika memakai API integrator, set `SENSOR_API_MODE=integrator` dan isi `INTEGRATOR_*`.
+- Jika realtime API lain sudah siap, set `SENSOR_API_MODE=real` dan isi `SENSOR_API_BASE_URL`.
 - Mapping data realtime ke struktur frontend bisa diubah di `src/services/dashboardService.js`.
 - `TIME_ZONE` menentukan tanggal/waktu yang dipakai backend (default `Asia/Jakarta`).
 
