@@ -57,6 +57,7 @@ database/
    SQL_USER=yogo
    SQL_PASSWORD="P@$$w0rd123!@#"
    SQL_SERVER=localhost
+   TIME_ZONE=Asia/Jakarta
    ```
 4. Jalankan:
    ```bash
@@ -130,6 +131,7 @@ Contoh response:
 {
   "meta": {
     "serverTime": "2026-01-31T10:00:00.000Z",
+    "serverDate": "2026-01-31",
     "refreshMs": 1000,
     "polling": {
       "isRunning": true,
@@ -168,6 +170,7 @@ Contoh response:
       "area": "Mining",
       "location": "Manado - Front A",
       "time": "09:59:59",
+      "date": "2026-01-31",
       "status": "Open",
       "speed": "25 km/h",
       "count": 1,
@@ -199,6 +202,7 @@ Contoh response:
       "area": "Mining",
       "location": "Pit Utara",
       "time": "09:10:00",
+      "date": "2026-01-31",
       "status": "Open",
       "speed": "0 km/h",
       "count": 2,
@@ -214,6 +218,7 @@ Contoh response:
 {
   "meta": {
     "serverTime": "2026-01-31T10:00:00.000Z",
+    "serverDate": "2026-01-31",
     "lookbackMinutes": 60,
     "source": "cache"
   },
@@ -234,6 +239,7 @@ Contoh response:
     "area": "Mining",
     "location": "Manado - Front A",
     "time": "09:59:59",
+    "date": "2026-01-31",
     "status": "Open",
     "speed": "25 km/h",
     "count": 1,
@@ -284,6 +290,7 @@ Catatan:
 - `SENSOR_API_MODE=mock` akan menghasilkan data dummy agar backend bisa langsung dicoba.
 - Jika realtime API asli sudah siap, set `SENSOR_API_MODE=real` dan isi `SENSOR_API_BASE_URL`.
 - Mapping data realtime ke struktur frontend bisa diubah di `src/services/dashboardService.js`.
+- `TIME_ZONE` menentukan tanggal/waktu yang dipakai backend (default `Asia/Jakarta`).
 
 ## Catatan Deploy ke Azure App Service + SQL MI
 
