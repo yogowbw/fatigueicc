@@ -226,6 +226,15 @@ const fetchIntegratorEvents = async () => {
     headers.Authorization = config.integrator.authHeader;
   }
 
+  logIntegratorDebug('Headers', {
+    hasAuthorization: Boolean(headers.Authorization),
+    authPrefix: headers.Authorization
+      ? String(headers.Authorization).split(' ')[0]
+      : null,
+    hasXToken: Boolean(headers['x-token']),
+    hasAccessToken: Boolean(headers.access_token)
+  });
+
   const payload = buildIntegratorPayload();
   if (
     config.integrator.authMode === 'body' ||
