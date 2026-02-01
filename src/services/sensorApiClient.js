@@ -241,6 +241,9 @@ const mapIntegratorEventToReading = (event) => {
   const status = event.is_followed_up ? 'Followed Up' : 'Open';
   const speed = Number.isFinite(Number(event.speed)) ? Number(event.speed) : null;
   const timestamp = event.server_time || event.upload_at || event.time;
+  const area = event.area || config.defaultArea;
+  const driverName =
+    event.driver?.name || event.driver_name || event.driverName || null;
 
   const location = event.geofence?.name
     ? event.geofence.name
@@ -258,9 +261,11 @@ const mapIntegratorEventToReading = (event) => {
       id: event.id,
       identity: event.identity,
       unit: device.name || device.imei || sensorId,
-      operator: event.driver?.name || event.manual_verification_by || 'Unknown Operator',
-      type: event.name || 'Fatigue',
-      area: config.defaultArea,
+      driver: driverName,
+      operator: event.manual_verification_by || 'Unknown Verifier',
+      type: 'Fatigue',
+      fatigue: event.name || 'Fatigue',
+      area,
       location,
       speed: speed !== null ? `${speed} km/h` : undefined,
       count: 1,

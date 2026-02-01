@@ -58,12 +58,15 @@ const toAlert = (reading) => {
     metaStatus === 'open' || metaStatus === 'followed up'
       ? meta.status
       : normalizeAlertStatus(reading);
+  const operator = meta.driver || meta.operator || 'Unknown Driver';
+  const fatigue = meta.fatigue || meta.type || 'Fatigue';
 
   return {
     id: meta.id || reading.sensorId,
     unit: meta.unit || reading.sensorId,
-    operator: meta.operator || 'Unknown Operator',
+    operator,
     type: meta.type || 'Fatigue',
+    fatigue,
     area,
     location,
     time: meta.time || formatTimeLocal(reading.timestamp),
