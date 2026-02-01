@@ -80,6 +80,12 @@ const parseJsonSafe = async (response) => {
   }
 };
 
+const authState = {
+  accessToken: null,
+  token: null,
+  obtainedAt: null
+};
+
 const fetchWithTimeout = async (url, timeoutMs, options = {}) => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -143,6 +149,82 @@ const buildIntegratorPayload = () => {
   }
 
   return payload;
+};
+
+const resolveLoginUrl = () => {
+  if (config.integrator.loginUrl) return config.integrator.loginUrl;
+  if (!config.integrator.baseUrl) return '';
+  try {
+    const base = new URL(config.integrator.baseUrl);
+    return new URL('/api/v1/vss/auth', base).toString();
+  } catch (error) {
+    return '';
+  }
+};
+
+const loginIntegrator = async () => {
+  const loginUrl = resolveLoginUrl();
+  if (!loginUrl) {
+    throw new Error('INTEGRATOR_LOGIN_URL is not set');
+  }
+  if (!config.integrator.username || !config.integrator.password) {
+    throw new Error('INTEGRATOR_USERNAME or INTEGRATOR_PASSWORD is missing');
+  }
+
+  logIntegratorDebug('Login', { url: loginUrl, username: config.integrator.username });
+
+  const responseMeta = await fetchWithTimeout(loginUrl, config.sensorApiTimeoutMs, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json'
+    },
+    body: JSON.stringify({
+      username: config.integrator.username,
+      password: config.integrator.password
+    }),
+    returnResponseMeta: true
+  });
+
+  const data = responseMeta?.data;
+  if (!data || data.success === false) {
+    throw new Error(data?.message || 'Integrator login failed');
+  }
+
+  const accessToken = data?.data?.access_token || null;
+  const token = data?.data?.token || null;
+
+  if (!accessToken) {
+    throw new Error('Integrator login did not return access_token');
+  }
+
+  authState.accessToken = accessToken;
+  authState.token = token;
+  authState.obtainedAt = new Date().toISOString();
+
+  logIntegratorDebug('Login success', {
+    hasAccessToken: Boolean(accessToken),
+    hasToken: Boolean(token)
+  });
+
+  return { accessToken, token };
+};
+
+const applyAuthHeaders = async (headers) => {
+  if (
+    config.integrator.authMode === 'login' ||
+    config.integrator.authMode === 'auto'
+  ) {
+    if (!authState.accessToken) {
+      await loginIntegrator();
+    }
+    if (authState.accessToken) {
+      headers.Authorization = `Bearer ${authState.accessToken}`;
+    }
+    if (authState.token && !headers['x-token']) {
+      headers['x-token'] = authState.token;
+    }
+  }
 };
 
 const buildBasicAuthHeader = () => {
@@ -226,6 +308,8 @@ const fetchIntegratorEvents = async () => {
     headers.Authorization = config.integrator.authHeader;
   }
 
+  await applyAuthHeaders(headers);
+
   logIntegratorDebug('Headers', {
     hasAuthorization: Boolean(headers.Authorization),
     authPrefix: headers.Authorization
@@ -263,18 +347,38 @@ const fetchIntegratorEvents = async () => {
       }
     );
   } catch (error) {
-    logIntegratorDebug('Error', {
-      status: error.status,
-      message: error.message,
-      response: error.data && typeof error.data === 'object'
-        ? {
-            code: error.data.code,
-            success: error.data.success,
-            message: error.data.message
-          }
-        : error.data
-    });
-    throw error;
+    if (
+      error.status === 401 &&
+      (config.integrator.authMode === 'login' ||
+        config.integrator.authMode === 'auto')
+    ) {
+      await loginIntegrator();
+      await applyAuthHeaders(headers);
+      responseMeta = await fetchWithTimeout(
+        config.integrator.baseUrl,
+        config.sensorApiTimeoutMs,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload),
+          returnResponseMeta: true
+        }
+      );
+    } else {
+      logIntegratorDebug('Error', {
+        status: error.status,
+        message: error.message,
+        response:
+          error.data && typeof error.data === 'object'
+            ? {
+                code: error.data.code,
+                success: error.data.success,
+                message: error.data.message
+              }
+            : error.data
+      });
+      throw error;
+    }
   }
 
   const data = responseMeta?.data;

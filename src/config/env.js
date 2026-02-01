@@ -76,6 +76,7 @@ const config = {
     authHeader: process.env.INTEGRATOR_AUTH_HEADER || '',
     xToken: process.env.INTEGRATOR_XTOKEN || '',
     accessToken: process.env.INTEGRATOR_ACCESS_TOKEN || '',
+    loginUrl: process.env.INTEGRATOR_LOGIN_URL || '',
     pageSize: toInt(process.env.INTEGRATOR_PAGE_SIZE, 50),
     filterColumns: process.env.INTEGRATOR_FILTER_COLUMNS || 'is_followed_up',
     filterValue: process.env.INTEGRATOR_FILTER_VALUE || 'true',

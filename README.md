@@ -157,6 +157,16 @@ INTEGRATOR_XTOKEN=your_xtoken
 INTEGRATOR_ACCESS_TOKEN=your_access_token
 ```
 
+Jika token sering berubah, gunakan **auto-login**:
+```
+INTEGRATOR_AUTH_MODE=login
+INTEGRATOR_USERNAME=your_username
+INTEGRATOR_PASSWORD=your_password
+INTEGRATOR_LOGIN_URL=https://api-platform-integrator.transtrack.co/api/v1/vss/auth
+```
+Backend akan login otomatis lalu memasang:
+`Authorization: Bearer <access_token>` dan `x-token: <token>`.
+
 Jika integrator meminta **header dan body** sekaligus:
 ```
 INTEGRATOR_AUTH_MODE=both
