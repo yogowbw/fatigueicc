@@ -73,6 +73,7 @@ const config = {
     username: process.env.INTEGRATOR_USERNAME || '',
     password: process.env.INTEGRATOR_PASSWORD || '',
     authMode: process.env.INTEGRATOR_AUTH_MODE || 'basic',
+    authHeader: process.env.INTEGRATOR_AUTH_HEADER || '',
     pageSize: toInt(process.env.INTEGRATOR_PAGE_SIZE, 50),
     filterColumns: process.env.INTEGRATOR_FILTER_COLUMNS || 'is_followed_up',
     filterValue: process.env.INTEGRATOR_FILTER_VALUE || 'true',

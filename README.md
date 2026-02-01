@@ -145,6 +145,19 @@ INTEGRATOR_USERNAME=...
 INTEGRATOR_PASSWORD=...
 ```
 
+Jika autentikasi memakai header khusus (misal Bearer token):
+```
+INTEGRATOR_AUTH_MODE=header
+INTEGRATOR_AUTH_HEADER=Bearer your_token_here
+```
+
+Jika integrator meminta **header dan body** sekaligus:
+```
+INTEGRATOR_AUTH_MODE=both
+INTEGRATOR_USERNAME=...
+INTEGRATOR_PASSWORD=...
+```
+
 Jika ingin **tanpa filter**, kosongkan:
 ```
 INTEGRATOR_FILTER_COLUMNS=

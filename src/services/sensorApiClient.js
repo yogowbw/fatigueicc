@@ -204,15 +204,25 @@ const fetchIntegratorEvents = async () => {
     Accept: 'application/json'
   };
 
-  if (config.integrator.authMode === 'basic') {
+  if (
+    config.integrator.authMode === 'basic' ||
+    config.integrator.authMode === 'both'
+  ) {
     const authHeader = buildBasicAuthHeader();
     if (authHeader) {
       headers.Authorization = authHeader;
     }
   }
 
+  if (config.integrator.authMode === 'header' && config.integrator.authHeader) {
+    headers.Authorization = config.integrator.authHeader;
+  }
+
   const payload = buildIntegratorPayload();
-  if (config.integrator.authMode === 'body') {
+  if (
+    config.integrator.authMode === 'body' ||
+    config.integrator.authMode === 'both'
+  ) {
     payload.username = config.integrator.username;
     payload.password = config.integrator.password;
   }
