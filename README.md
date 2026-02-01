@@ -151,6 +151,12 @@ INTEGRATOR_AUTH_MODE=header
 INTEGRATOR_AUTH_HEADER=Bearer your_token_here
 ```
 
+Jika integrator memakai **x-token** dan **access_token**:
+```
+INTEGRATOR_XTOKEN=your_xtoken
+INTEGRATOR_ACCESS_TOKEN=your_access_token
+```
+
 Jika integrator meminta **header dan body** sekaligus:
 ```
 INTEGRATOR_AUTH_MODE=both

@@ -204,6 +204,14 @@ const fetchIntegratorEvents = async () => {
     Accept: 'application/json'
   };
 
+  if (config.integrator.xToken) {
+    headers['x-token'] = config.integrator.xToken;
+  }
+
+  if (config.integrator.accessToken) {
+    headers.access_token = config.integrator.accessToken;
+  }
+
   if (
     config.integrator.authMode === 'basic' ||
     config.integrator.authMode === 'both'
