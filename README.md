@@ -366,7 +366,8 @@ Catatan:
   ```
   Nanti jika ada API device status, bisa diganti ke mode `cache` atau API khusus.
   - Untuk integrator events: `alert.operator` diambil dari **driver** jika tersedia,
-    dan `alert.fatigue` diambil dari field **event.name** (mis. "Eyes Closing").
+    `alert.fatigue` diambil dari field **event.name** (mis. "Eyes Closing"),
+    dan `alert.photoUrl` diambil dari `alarm_file` (foto pertama jika ada).
 
 ## Catatan Deploy ke Azure App Service + SQL MI
 

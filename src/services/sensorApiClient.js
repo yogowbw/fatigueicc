@@ -251,6 +251,14 @@ const mapIntegratorEventToReading = (event) => {
       ? `Lat ${Number(event.latitude).toFixed(6)}, Long ${Number(event.longitude).toFixed(6)}`
       : 'Unknown';
 
+  const alarmFiles = Array.isArray(event.alarm_file) ? event.alarm_file : [];
+  const photoFile =
+    alarmFiles.find(
+      (file) =>
+        typeof file?.downUrl === 'string' &&
+        file.downUrl.toLowerCase().includes('.jpg')
+    ) || alarmFiles.find((file) => typeof file?.downUrl === 'string');
+
   return normalizeReading(sensorId, {
     status,
     value: speed,
@@ -276,7 +284,8 @@ const mapIntegratorEventToReading = (event) => {
       imei: device.imei,
       deviceId: event.device_id,
       latitude: event.latitude,
-      longitude: event.longitude
+      longitude: event.longitude,
+      photoUrl: photoFile?.downUrl
     }
   });
 };

@@ -67,6 +67,7 @@ const toAlert = (reading) => {
     operator,
     type: meta.type || 'Fatigue',
     fatigue,
+    photoUrl: meta.photoUrl || null,
     area,
     location,
     time: meta.time || formatTimeLocal(reading.timestamp),
