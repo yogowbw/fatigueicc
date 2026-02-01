@@ -70,6 +70,10 @@ const toAlert = (reading) => {
     photoUrl: meta.photoUrl || null,
     area,
     location,
+    latitude:
+      Number.isFinite(Number(meta.latitude)) ? Number(meta.latitude) : null,
+    longitude:
+      Number.isFinite(Number(meta.longitude)) ? Number(meta.longitude) : null,
     time: meta.time || formatTimeLocal(reading.timestamp),
     date: meta.date || getTodayLocal(),
     status: alertStatus,
