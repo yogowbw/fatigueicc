@@ -15,6 +15,12 @@ const toBool = (value, fallback) => {
 const toOptionalString = (value, fallback) =>
   value === undefined ? fallback : value;
 
+const toList = (value, fallback = '') =>
+  (value ?? fallback)
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
 const defaultSensorIds = [
   'DT-402',
   'DT-112',
@@ -58,6 +64,21 @@ const config = {
     .split(',')
     .map((value) => value.trim())
     .filter(Boolean),
+  areaMapping: {
+    haulingGroupKeywords: toList(
+      process.env.HAULING_GROUP_KEYWORDS,
+      'hauling'
+    ),
+    miningGroupKeywords: toList(process.env.MINING_GROUP_KEYWORDS, 'mining'),
+    haulingUnitPrefixes: toList(
+      process.env.HAULING_UNIT_PREFIXES,
+      'HD,WT'
+    ),
+    miningUnitPrefixes: toList(
+      process.env.MINING_UNIT_PREFIXES,
+      'DT,EX'
+    )
+  },
   deviceHealthMode:
     process.env.DEVICE_HEALTH_MODE ||
     (process.env.INTEGRATOR_BASE_URL ? 'mock' : 'cache'),
@@ -87,6 +108,8 @@ const config = {
     loginUrl: process.env.INTEGRATOR_LOGIN_URL || '',
     devicesUrl: process.env.INTEGRATOR_DEVICES_URL || '',
     pageSize: toInt(process.env.INTEGRATOR_PAGE_SIZE, 50),
+    fetchAllPages: toBool(process.env.INTEGRATOR_FETCH_ALL_PAGES, true),
+    maxPages: toInt(process.env.INTEGRATOR_MAX_PAGES, 20),
     filterColumns: toOptionalString(
       process.env.INTEGRATOR_FILTER_COLUMNS,
       'manual_verification_is_true_alarm,level'

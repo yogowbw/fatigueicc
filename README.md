@@ -405,6 +405,19 @@ Catatan:
     INTEGRATOR_FILTER_COLUMNS=manual_verification_is_true_alarm,level
     INTEGRATOR_FILTER_VALUE=true|3
     ```
+  - Jika total data > 1 halaman, backend dapat mengambil semua halaman:
+    ```
+    INTEGRATOR_FETCH_ALL_PAGES=true
+    INTEGRATOR_MAX_PAGES=20
+    INTEGRATOR_PAGE_SIZE=50
+    ```
+  - Mapping area bisa disesuaikan dengan keyword/prefix:
+    ```
+    HAULING_GROUP_KEYWORDS=hauling
+    MINING_GROUP_KEYWORDS=mining
+    HAULING_UNIT_PREFIXES=HD,WT
+    MINING_UNIT_PREFIXES=DT,EX
+    ```
 
 ## Catatan Deploy ke Azure App Service + SQL MI
 

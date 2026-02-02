@@ -130,7 +130,7 @@ const formatDateTimeLocal = (date) =>
     hour12: false
   }).format(date);
 
-const buildIntegratorPayload = () => {
+const buildIntegratorPayload = (page = 1) => {
   const today = formatDateLocal(new Date());
   const rangeStart = `${today} 00:00:00`;
   const rangeEnd = formatDateTimeLocal(new Date());
@@ -139,7 +139,7 @@ const buildIntegratorPayload = () => {
     range_date_start: rangeStart,
     range_date_end: rangeEnd,
     range_date_columns: config.integrator.rangeDateColumn,
-    page: 1,
+    page,
     page_size: config.integrator.pageSize
   };
 
@@ -158,6 +158,41 @@ const buildIntegratorPayload = () => {
   }
 
   return payload;
+};
+const normalizeText = (value) => String(value || '').toLowerCase();
+
+const matchesAnyKeyword = (value, keywords) => {
+  if (!value || !keywords || keywords.length === 0) return false;
+  const normalized = normalizeText(value);
+  return keywords.some((keyword) => normalized.includes(normalizeText(keyword)));
+};
+
+const startsWithAny = (value, prefixes) => {
+  if (!value || !prefixes || prefixes.length === 0) return false;
+  const normalized = normalizeText(value);
+  return prefixes.some((prefix) => normalized.startsWith(normalizeText(prefix)));
+};
+
+const inferAreaFromEvent = (event, device) => {
+  if (event?.area) return event.area;
+
+  const groupName = device?.group_name || '';
+  if (matchesAnyKeyword(groupName, config.areaMapping.haulingGroupKeywords)) {
+    return 'Hauling';
+  }
+  if (matchesAnyKeyword(groupName, config.areaMapping.miningGroupKeywords)) {
+    return 'Mining';
+  }
+
+  const unit = device?.name || event?.device_id || '';
+  if (startsWithAny(unit, config.areaMapping.haulingUnitPrefixes)) {
+    return 'Hauling';
+  }
+  if (startsWithAny(unit, config.areaMapping.miningUnitPrefixes)) {
+    return 'Mining';
+  }
+
+  return config.defaultArea;
 };
 
 const resolveLoginUrl = () => {
@@ -250,7 +285,7 @@ const mapIntegratorEventToReading = (event) => {
   const status = event.is_followed_up ? 'Followed Up' : 'Open';
   const speed = Number.isFinite(Number(event.speed)) ? Number(event.speed) : null;
   const timestamp = event.server_time || event.upload_at || event.time;
-  const area = event.area || config.defaultArea;
+  const area = inferAreaFromEvent(event, device);
   const driverName =
     event.driver?.name || event.driver_name || event.driverName || null;
 
@@ -359,7 +394,7 @@ const fetchIntegratorEvents = async () => {
     hasAccessToken: Boolean(headers.access_token)
   });
 
-  const payload = buildIntegratorPayload();
+  const payload = buildIntegratorPayload(1);
   if (
     config.integrator.authMode === 'body' ||
     config.integrator.authMode === 'both'
@@ -435,7 +470,46 @@ const fetchIntegratorEvents = async () => {
     throw new Error(data?.message || 'Integrator API request failed');
   }
 
-  const list = data?.data?.list || [];
+  let list = data?.data?.list || [];
+  const pagination = data?.data?.pagination;
+
+  if (
+    config.integrator.fetchAllPages &&
+    pagination?.total_pages &&
+    pagination.total_pages > 1
+  ) {
+    const totalPages = Math.min(
+      Number(pagination.total_pages),
+      config.integrator.maxPages
+    );
+
+    for (let page = 2; page <= totalPages; page += 1) {
+      const pagePayload = buildIntegratorPayload(page);
+      logIntegratorDebug('Request', {
+        url: config.integrator.baseUrl,
+        authMode: config.integrator.authMode,
+        payload: redactPayload(pagePayload)
+      });
+
+      const pageResponse = await fetchWithTimeout(
+        config.integrator.baseUrl,
+        config.sensorApiTimeoutMs,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(pagePayload),
+          returnResponseMeta: true
+        }
+      );
+
+      const pageData = pageResponse?.data;
+      if (pageData?.success === false) break;
+
+      const pageList = pageData?.data?.list || [];
+      list = list.concat(pageList);
+    }
+  }
+
   return list.map(mapIntegratorEventToReading);
 };
 
