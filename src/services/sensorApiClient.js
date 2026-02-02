@@ -130,10 +130,26 @@ const formatDateTimeLocal = (date) =>
     hour12: false
   }).format(date);
 
+const formatDateTimeFixed = (date, timeValue) => {
+  const time = String(timeValue || '').trim();
+  if (!time) return formatDateTimeLocal(date);
+  return `${formatDateLocal(date)} ${time}`;
+};
+
+const resolveRangeEnd = (date) => {
+  if (config.integrator.rangeEndMode === 'end_of_day') {
+    return formatDateTimeFixed(date, '23:59:59');
+  }
+  if (config.integrator.rangeEndMode === 'fixed') {
+    return formatDateTimeFixed(date, config.integrator.rangeEndTime || '23:59:59');
+  }
+  return formatDateTimeLocal(date);
+};
+
 const buildIntegratorPayload = (page = 1) => {
   const today = formatDateLocal(new Date());
-  const rangeStart = `${today} 00:00:00`;
-  const rangeEnd = formatDateTimeLocal(new Date());
+  const rangeStart = `${today} ${config.integrator.rangeStartTime || '00:00:00'}`;
+  const rangeEnd = resolveRangeEnd(new Date());
 
   const payload = {
     range_date_start: rangeStart,

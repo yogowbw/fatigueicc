@@ -110,6 +110,9 @@ const config = {
     pageSize: toInt(process.env.INTEGRATOR_PAGE_SIZE, 50),
     fetchAllPages: toBool(process.env.INTEGRATOR_FETCH_ALL_PAGES, true),
     maxPages: toInt(process.env.INTEGRATOR_MAX_PAGES, 20),
+    rangeStartTime: process.env.INTEGRATOR_RANGE_START_TIME || '00:00:00',
+    rangeEndTime: process.env.INTEGRATOR_RANGE_END_TIME || '',
+    rangeEndMode: process.env.INTEGRATOR_RANGE_END_MODE || 'now',
     filterColumns: toOptionalString(
       process.env.INTEGRATOR_FILTER_COLUMNS,
       'manual_verification_is_true_alarm,level'

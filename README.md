@@ -405,6 +405,12 @@ Catatan:
     INTEGRATOR_FILTER_COLUMNS=manual_verification_is_true_alarm,level
     INTEGRATOR_FILTER_VALUE=true|3
     ```
+  - Range waktu integrator (agar sesuai Postman):
+    ```
+    INTEGRATOR_RANGE_START_TIME=00:00:00
+    INTEGRATOR_RANGE_END_MODE=now      # now | end_of_day | fixed
+    INTEGRATOR_RANGE_END_TIME=23:11:00 # dipakai jika mode=fixed
+    ```
   - Jika total data > 1 halaman, backend dapat mengambil semua halaman:
     ```
     INTEGRATOR_FETCH_ALL_PAGES=true
