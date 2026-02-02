@@ -86,9 +86,9 @@ const SCCDashboard = () => {
 
   const ITEMS_DELAYED = 5;
 
-  const addNotification = useCallback((title, message, type = 'critical') => {
+  const addNotification = useCallback((title, message, type = 'critical', meta = {}) => {
     const id = Date.now() + Math.random();
-    const newNotif = { id, title, message, type };
+    const newNotif = { id, title, message, type, ...meta };
     setNotifications((prev) => [newNotif, ...prev]);
     setTimeout(() => {
       setNotifications((prev) => prev.filter((n) => n.id !== id));
@@ -97,6 +97,28 @@ const SCCDashboard = () => {
 
   const removeNotification = useCallback((id) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
+  }, []);
+
+  const playAlarm = useCallback(() => {
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+      const context = new AudioContext();
+      const oscillator = context.createOscillator();
+      const gainNode = context.createGain();
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(880, context.currentTime);
+      gainNode.gain.setValueAtTime(0.0001, context.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.2, context.currentTime + 0.05);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.6);
+
+      oscillator.connect(gainNode).connect(context.destination);
+      oscillator.start();
+      oscillator.stop(context.currentTime + 0.6);
+      oscillator.onended = () => context.close();
+    } catch (error) {
+      console.warn('Alarm sound blocked:', error);
+    }
   }, []);
 
   const getAlertKey = useCallback((alert) => {
@@ -216,11 +238,17 @@ const SCCDashboard = () => {
             trackSeenAlert(key);
           });
 
+          if (newAlerts.length > 0) {
+            playAlarm();
+          }
+
           newAlerts.slice(0, 5).forEach((alert) => {
             const fatigue = alert.fatigue || alert.type || 'Fatigue';
             const unit = alert.unit || alert.sensorId || 'Unknown Unit';
             const location = alert.location || 'Unknown Location';
-            addNotification('New Fatigue Alert!', `${unit} • ${fatigue} • ${location}`);
+            addNotification('New Fatigue Alert!', `${unit} • ${fatigue} • ${location}`, 'critical', {
+              photoUrl: alert.photoUrl || null
+            });
           });
         }
 
@@ -249,7 +277,7 @@ const SCCDashboard = () => {
       isMounted = false;
       clearInterval(interval);
     };
-  }, [addNotification, getAlertKey, trackSeenAlert]);
+  }, [addNotification, getAlertKey, playAlarm, trackSeenAlert]);
 
   const getOpenDurationValue = (timeStr) => {
     if (!timeStr) return 0;
@@ -446,8 +474,19 @@ const SCCDashboard = () => {
               darkMode ? 'bg-slate-800 border-red-500 text-white' : 'bg-white border-red-500 text-slate-800'
             }`}
           >
-            <div className="p-2 bg-red-500/20 rounded-full text-red-500 animate-pulse shrink-0">
-              <Bell size={20} />
+            <div className="shrink-0">
+              {notif.photoUrl ? (
+                <img
+                  src={notif.photoUrl}
+                  alt="Alert"
+                  referrerPolicy="no-referrer"
+                  className="h-10 w-10 rounded object-cover border border-red-500/40"
+                />
+              ) : (
+                <div className="p-2 bg-red-500/20 rounded-full text-red-500 animate-pulse">
+                  <Bell size={20} />
+                </div>
+              )}
             </div>
             <div className="flex-1 min-w-0">
               <h4 className="font-bold text-sm truncate">{notif.title}</h4>
