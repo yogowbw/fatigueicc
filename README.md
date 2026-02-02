@@ -20,6 +20,12 @@ Jika ingin override API URL, set env:
 VITE_API_BASE_URL=http://localhost:3000
 ```
 
+Untuk mengubah zona waktu tampilan frontend:
+```
+VITE_TIME_ZONE=Asia/Makassar
+VITE_TIME_LABEL=WITA
+```
+
 ## Arsitektur Singkat
 
 1. **Polling Realtime API** (1 detik)

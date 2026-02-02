@@ -27,6 +27,8 @@ import {
 } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const TIME_ZONE = import.meta.env.VITE_TIME_ZONE || 'Asia/Makassar';
+const TIME_LABEL = import.meta.env.VITE_TIME_LABEL || 'WITA';
 
 const buildApiUrl = (path) => {
   if (!API_BASE_URL) return path;
@@ -617,10 +619,22 @@ const SCCDashboard = () => {
 
           <div className={`flex flex-col items-end ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
             <span className="text-[clamp(1rem,2vh,1.8rem)] font-mono font-semibold leading-none">
-              {currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })} WIB
+              {currentTime.toLocaleTimeString('id-ID', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                timeZone: TIME_ZONE
+              })}{' '}
+              {TIME_LABEL}
             </span>
             <span className="text-[clamp(0.6rem,0.9vh,0.9rem)] font-medium uppercase tracking-wider mt-0.5">
-              {currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' })}
+              {currentTime.toLocaleDateString('id-ID', {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'short',
+                year: 'numeric',
+                timeZone: TIME_ZONE
+              })}
             </span>
           </div>
 
