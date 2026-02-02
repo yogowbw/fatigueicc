@@ -940,7 +940,7 @@ const SCCDashboard = () => {
                     <div className="flex h-full items-center justify-center text-slate-500 text-xs">No high risk data</div>
                   )}
                 </div>
-                <PaginationControls currentPage={highRiskPage} totalPages={Math.ceil(highRiskZones.length / dynamicItemsPerPage.highRisk)} onPageChange={setHighRiskPage} />
+                <PaginationControls currentPage={highRiskPage} totalPages={Math.ceil(highFreqZones.length / dynamicItemsPerPage.highRisk)} onPageChange={setHighRiskPage} />
               </div>
             </div>
           </div>
