@@ -2,6 +2,24 @@
 
 Backend ini menjadi **single data source** untuk frontend dashboard. Data realtime dipolling tiap 1 detik, disimpan ke **in-memory cache** sebagai last known value, lalu dipersist ke **SQL Server** secara periodik (default 60 detik). Frontend hanya fetch ke backend setiap 1 detik.
 
+## Frontend (React + Vite)
+
+Frontend tersedia di folder `frontend/`.
+
+### Menjalankan Frontend
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Frontend akan berjalan di `http://localhost:5173` dan otomatis proxy ke backend (`/api` -> `http://localhost:3000`).
+
+Jika ingin override API URL, set env:
+```
+VITE_API_BASE_URL=http://localhost:3000
+```
+
 ## Arsitektur Singkat
 
 1. **Polling Realtime API** (1 detik)
