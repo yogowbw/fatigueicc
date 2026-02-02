@@ -56,6 +56,9 @@ const SCCDashboard = () => {
   const fetchOverviewRef = useRef(null);
   const fetchInFlightRef = useRef(false);
   const lastErrorRef = useRef(0);
+  const seenAlertIdsRef = useRef(new Set());
+  const seenAlertQueueRef = useRef([]);
+  const hasSeededAlertsRef = useRef(false);
 
   // --- REFS UNTUK MENGUKUR TINGGI CONTAINER (DYNAMIC PAGINATION) ---
   const miningListContainerRef = useRef(null);
@@ -94,6 +97,24 @@ const SCCDashboard = () => {
 
   const removeNotification = useCallback((id) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
+  }, []);
+
+  const getAlertKey = useCallback((alert) => {
+    if (!alert) return null;
+    return (
+      alert.id ||
+      `${alert.sensorId || alert.unit || 'unknown'}|${alert.timestamp || alert.time || ''}`
+    );
+  }, []);
+
+  const trackSeenAlert = useCallback((key) => {
+    if (!key || seenAlertIdsRef.current.has(key)) return;
+    seenAlertIdsRef.current.add(key);
+    seenAlertQueueRef.current.push(key);
+    if (seenAlertQueueRef.current.length > 1000) {
+      const oldest = seenAlertQueueRef.current.shift();
+      seenAlertIdsRef.current.delete(oldest);
+    }
   }, []);
 
   useEffect(() => {
@@ -181,7 +202,29 @@ const SCCDashboard = () => {
         const data = await res.json();
 
         if (!isMounted) return;
-        setAlerts(Array.isArray(data.alerts) ? data.alerts : []);
+        const nextAlerts = Array.isArray(data.alerts) ? data.alerts : [];
+
+        if (!hasSeededAlertsRef.current) {
+          nextAlerts.forEach((alert) => trackSeenAlert(getAlertKey(alert)));
+          hasSeededAlertsRef.current = true;
+        } else {
+          const newAlerts = [];
+          nextAlerts.forEach((alert) => {
+            const key = getAlertKey(alert);
+            if (!key || seenAlertIdsRef.current.has(key)) return;
+            newAlerts.push(alert);
+            trackSeenAlert(key);
+          });
+
+          newAlerts.slice(0, 5).forEach((alert) => {
+            const fatigue = alert.fatigue || alert.type || 'Fatigue';
+            const unit = alert.unit || alert.sensorId || 'Unknown Unit';
+            const location = alert.location || 'Unknown Location';
+            addNotification('New Fatigue Alert!', `${unit} • ${fatigue} • ${location}`);
+          });
+        }
+
+        setAlerts(nextAlerts);
         if (data.deviceHealth) {
           setDeviceHealth(data.deviceHealth);
         }
@@ -206,7 +249,7 @@ const SCCDashboard = () => {
       isMounted = false;
       clearInterval(interval);
     };
-  }, [addNotification]);
+  }, [addNotification, getAlertKey, trackSeenAlert]);
 
   const getOpenDurationValue = (timeStr) => {
     if (!timeStr) return 0;
