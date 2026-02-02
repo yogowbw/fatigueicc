@@ -12,6 +12,9 @@ const toBool = (value, fallback) => {
   return String(value).toLowerCase() === 'true';
 };
 
+const toOptionalString = (value, fallback) =>
+  value === undefined ? fallback : value;
+
 const defaultSensorIds = [
   'DT-402',
   'DT-112',
@@ -51,6 +54,10 @@ const config = {
     : 75,
   timeZone: process.env.TIME_ZONE || 'Asia/Jakarta',
   defaultArea: process.env.DEFAULT_AREA || 'Mining',
+  fatigueTypes: (process.env.FATIGUE_TYPES || 'Eyes Closing,Yawning')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean),
   deviceHealthMode:
     process.env.DEVICE_HEALTH_MODE ||
     (process.env.INTEGRATOR_BASE_URL ? 'mock' : 'cache'),
@@ -60,6 +67,7 @@ const config = {
     offline: toInt(process.env.DEVICE_HEALTH_OFFLINE, 7),
     coverage: toInt(process.env.DEVICE_HEALTH_COVERAGE, 95)
   },
+  devicePollIntervalMs: toInt(process.env.DEVICE_POLL_INTERVAL_MS, 10000),
   sensorApiMode:
     process.env.SENSOR_API_MODE ||
     (process.env.INTEGRATOR_BASE_URL
@@ -77,9 +85,13 @@ const config = {
     xToken: process.env.INTEGRATOR_XTOKEN || '',
     accessToken: process.env.INTEGRATOR_ACCESS_TOKEN || '',
     loginUrl: process.env.INTEGRATOR_LOGIN_URL || '',
+    devicesUrl: process.env.INTEGRATOR_DEVICES_URL || '',
     pageSize: toInt(process.env.INTEGRATOR_PAGE_SIZE, 50),
-    filterColumns: process.env.INTEGRATOR_FILTER_COLUMNS || 'is_followed_up',
-    filterValue: process.env.INTEGRATOR_FILTER_VALUE || 'true',
+    filterColumns: toOptionalString(
+      process.env.INTEGRATOR_FILTER_COLUMNS,
+      'manual_verification_is_true_alarm,level'
+    ),
+    filterValue: toOptionalString(process.env.INTEGRATOR_FILTER_VALUE, 'true|3'),
     rangeDateColumn: process.env.INTEGRATOR_RANGE_DATE_COLUMN || 'device_time'
   },
   debugIntegrator: toBool(process.env.INTEGRATOR_DEBUG, false),

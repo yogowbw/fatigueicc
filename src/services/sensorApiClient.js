@@ -143,9 +143,18 @@ const buildIntegratorPayload = () => {
     page_size: config.integrator.pageSize
   };
 
-  if (config.integrator.filterColumns && config.integrator.filterValue !== '') {
-    payload.filter_columns = config.integrator.filterColumns;
-    payload.filter_value = config.integrator.filterValue;
+  const filterColumns =
+    typeof config.integrator.filterColumns === 'string'
+      ? config.integrator.filterColumns.trim()
+      : config.integrator.filterColumns;
+  const filterValue =
+    typeof config.integrator.filterValue === 'string'
+      ? config.integrator.filterValue.trim()
+      : config.integrator.filterValue;
+
+  if (filterColumns && filterValue !== '') {
+    payload.filter_columns = filterColumns;
+    payload.filter_value = filterValue;
   }
 
   return payload;
@@ -290,11 +299,18 @@ const mapIntegratorEventToReading = (event) => {
   });
 };
 
-const fetchIntegratorEvents = async () => {
-  if (!config.integrator.baseUrl) {
-    throw new Error('INTEGRATOR_BASE_URL is not set');
+const resolveDevicesUrl = () => {
+  if (config.integrator.devicesUrl) return config.integrator.devicesUrl;
+  if (!config.integrator.baseUrl) return '';
+  try {
+    const base = new URL(config.integrator.baseUrl);
+    return new URL('/api/v1/devices-all', base).toString();
+  } catch (error) {
+    return '';
   }
+};
 
+const buildIntegratorHeaders = async () => {
   const headers = {
     'Content-Type': 'application/json',
     Accept: 'application/json'
@@ -323,6 +339,16 @@ const fetchIntegratorEvents = async () => {
   }
 
   await applyAuthHeaders(headers);
+
+  return headers;
+};
+
+const fetchIntegratorEvents = async () => {
+  if (!config.integrator.baseUrl) {
+    throw new Error('INTEGRATOR_BASE_URL is not set');
+  }
+
+  const headers = await buildIntegratorHeaders();
 
   logIntegratorDebug('Headers', {
     hasAuthorization: Boolean(headers.Authorization),
@@ -413,6 +439,84 @@ const fetchIntegratorEvents = async () => {
   return list.map(mapIntegratorEventToReading);
 };
 
+const fetchDevicesAll = async () => {
+  const devicesUrl = resolveDevicesUrl();
+  if (!devicesUrl) {
+    throw new Error('INTEGRATOR_DEVICES_URL is not set');
+  }
+
+  const headers = await buildIntegratorHeaders();
+
+  logIntegratorDebug('Devices Headers', {
+    hasAuthorization: Boolean(headers.Authorization),
+    authPrefix: headers.Authorization
+      ? String(headers.Authorization).split(' ')[0]
+      : null,
+    hasXToken: Boolean(headers['x-token']),
+    hasAccessToken: Boolean(headers.access_token)
+  });
+
+  let responseMeta;
+  try {
+    responseMeta = await fetchWithTimeout(
+      devicesUrl,
+      config.sensorApiTimeoutMs,
+      {
+        method: 'GET',
+        headers,
+        returnResponseMeta: true
+      }
+    );
+  } catch (error) {
+    if (
+      error.status === 401 &&
+      (config.integrator.authMode === 'login' ||
+        config.integrator.authMode === 'auto')
+    ) {
+      await loginIntegrator();
+      const retryHeaders = await buildIntegratorHeaders();
+      responseMeta = await fetchWithTimeout(
+        devicesUrl,
+        config.sensorApiTimeoutMs,
+        {
+          method: 'GET',
+          headers: retryHeaders,
+          returnResponseMeta: true
+        }
+      );
+    } else {
+      logIntegratorDebug('Devices Error', {
+        status: error.status,
+        message: error.message,
+        response:
+          error.data && typeof error.data === 'object'
+            ? {
+                code: error.data.code,
+                success: error.data.success,
+                message: error.data.message
+              }
+            : error.data
+      });
+      throw error;
+    }
+  }
+
+  const data = responseMeta?.data;
+
+  logIntegratorDebug('Devices Response', {
+    status: responseMeta?.status,
+    success: data?.success,
+    message: data?.message,
+    count: data?.data?.list?.length || data?.data?.length || 0
+  });
+
+  if (!data || data.success === false) {
+    throw new Error(data?.message || 'Integrator devices request failed');
+  }
+
+  return data?.data?.list || data?.data || [];
+};
+
 const fetchSensor = async (sensorId) => {
   if (config.sensorApiMode === 'mock') {
     return generateMockReading(sensorId);
@@ -446,4 +550,4 @@ const fetchAllSensors = async (sensorIds) => {
     .map((result) => result.value);
 };
 
-module.exports = { fetchSensor, fetchAllSensors };
+module.exports = { fetchSensor, fetchAllSensors, fetchDevicesAll };

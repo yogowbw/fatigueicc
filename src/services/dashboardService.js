@@ -1,6 +1,7 @@
 const { config } = require('../config/env');
 const { sql, getPool } = require('../db/sqlServer');
 const { QUERY_SENSOR_HISTORY, QUERY_LAST_READING } = require('../db/queries');
+const { deviceHealthCache } = require('../cache/deviceHealthCache');
 
 const formatTimeLocal = (isoString) => {
   const date = isoString ? new Date(isoString) : new Date();
@@ -117,10 +118,24 @@ const resolveDeviceHealth = (readings) => {
   return computeDeviceHealth(readings);
 };
 
+const normalizeValue = (value) =>
+  String(value || '')
+    .toLowerCase()
+    .trim();
+
+const filterFatigueAlerts = (alerts) => {
+  if (!config.fatigueTypes || config.fatigueTypes.length === 0) return alerts;
+  const allowed = new Set(config.fatigueTypes.map(normalizeValue));
+  return alerts.filter((alert) => allowed.has(normalizeValue(alert.fatigue)));
+};
+
 const computeStats = (alerts) => {
-  const totalToday = alerts.length;
-  const activeOpen = alerts.filter((alert) => alert.status === 'Open').length;
-  const followedUpToday = alerts.filter(
+  const fatigueAlerts = filterFatigueAlerts(alerts);
+  const totalToday = fatigueAlerts.length;
+  const activeOpen = fatigueAlerts.filter(
+    (alert) => alert.status !== 'Followed Up'
+  ).length;
+  const followedUpToday = fatigueAlerts.filter(
     (alert) => alert.status === 'Followed Up'
   ).length;
 
@@ -272,7 +287,10 @@ const createDashboardService = ({ cache, eventCache, pollingStatus }) => {
         polling: pollingStatus ? pollingStatus() : null,
         eventCount: eventReadings.length
       },
-      deviceHealth: resolveDeviceHealth(sensors),
+      deviceHealth:
+        config.deviceHealthMode === 'integrator' && deviceHealthCache.get()
+          ? deviceHealthCache.get()
+          : resolveDeviceHealth(sensors),
       sensors,
       alerts,
       stats: computeStats(alerts),

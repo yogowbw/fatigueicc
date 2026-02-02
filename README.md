@@ -356,7 +356,13 @@ Catatan:
 - Jika realtime API lain sudah siap, set `SENSOR_API_MODE=real` dan isi `SENSOR_API_BASE_URL`.
 - Mapping data realtime ke struktur frontend bisa diubah di `src/services/dashboardService.js`.
 - `TIME_ZONE` menentukan tanggal/waktu yang dipakai backend (default `Asia/Jakarta`).
-- Untuk kebutuhan **total sensor on/off**, saat ini backend memakai **mock data** dari env:
+- Untuk kebutuhan **total sensor on/off**, backend mendukung API devices-all:
+  ```
+  DEVICE_HEALTH_MODE=integrator
+  INTEGRATOR_DEVICES_URL=https://api-platform-integrator.transtrack.co/api/v1/devices-all
+  ```
+  Status ON/OFF dihitung dari field `acc` (true = ON).
+  Jika belum ada API, bisa pakai **mock** dari env:
   ```
   DEVICE_HEALTH_MODE=mock
   DEVICE_HEALTH_TOTAL=142
@@ -369,6 +375,12 @@ Catatan:
     `alert.fatigue` diambil dari field **event.name** (mis. "Eyes Closing"),
     `alert.photoUrl` diambil dari `alarm_file` (foto pertama jika ada),
     serta `alert.latitude` dan `alert.longitude` diisi dari data GPS.
+  - KPI fatigue memakai filter jenis: `FATIGUE_TYPES=Eyes Closing,Yawning`.
+  - Filter global data integrator (contoh KPI):
+    ```
+    INTEGRATOR_FILTER_COLUMNS=manual_verification_is_true_alarm,level
+    INTEGRATOR_FILTER_VALUE=true|3
+    ```
 
 ## Catatan Deploy ke Azure App Service + SQL MI
 

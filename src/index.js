@@ -2,7 +2,7 @@ const { config } = require('./config/env');
 const { createApp } = require('./app');
 const { sensorCache } = require('./cache/sensorCache');
 const { eventCache } = require('./cache/eventCache');
-const { startRealtimePolling } = require('./services/realtimePollingService');
+const { startRealtimePolling, startDevicePolling } = require('./services/realtimePollingService');
 const { startPersistenceJob } = require('./services/persistenceService');
 const { getPool } = require('./db/sqlServer');
 
@@ -17,6 +17,7 @@ const start = async () => {
   }
 
   startRealtimePolling(sensorCache, eventCache);
+  startDevicePolling();
   startPersistenceJob(sensorCache, eventCache);
 
   app.listen(config.port, () => {

@@ -1,7 +1,16 @@
 const { config } = require('../config/env');
-const { fetchAllSensors } = require('./sensorApiClient');
+const { fetchAllSensors, fetchDevicesAll } = require('./sensorApiClient');
+const { deviceHealthCache } = require('../cache/deviceHealthCache');
 
 const pollingState = {
+  isRunning: false,
+  lastSuccessAt: null,
+  lastErrorAt: null,
+  lastErrorMessage: null,
+  lastDurationMs: null
+};
+
+const devicePollingState = {
   isRunning: false,
   lastSuccessAt: null,
   lastErrorAt: null,
@@ -36,6 +45,34 @@ const pollOnce = async (cache, eventsCache) => {
   }
 };
 
+const pollDevicesOnce = async () => {
+  const start = Date.now();
+  try {
+    const devices = await fetchDevicesAll();
+    const total = devices.length;
+    const online = devices.filter((device) => device.acc === true).length;
+    const offline = Math.max(0, total - online);
+    const coverage = total > 0 ? Math.round((online / total) * 100) : 0;
+
+    deviceHealthCache.set({
+      total,
+      online,
+      offline,
+      coverage,
+      source: 'integrator',
+      updatedAt: new Date().toISOString()
+    });
+
+    devicePollingState.lastSuccessAt = new Date().toISOString();
+    devicePollingState.lastErrorAt = null;
+    devicePollingState.lastErrorMessage = null;
+    devicePollingState.lastDurationMs = Date.now() - start;
+  } catch (error) {
+    devicePollingState.lastErrorAt = new Date().toISOString();
+    devicePollingState.lastErrorMessage = error.message || 'Unknown error';
+  }
+};
+
 const startRealtimePolling = (cache, eventsCache) => {
   if (pollingState.isRunning) return null;
 
@@ -52,6 +89,29 @@ const startRealtimePolling = (cache, eventsCache) => {
   };
 };
 
-const getPollingStatus = () => ({ ...pollingState });
+const startDevicePolling = () => {
+  if (devicePollingState.isRunning) return null;
+  if (config.deviceHealthMode !== 'integrator') return null;
 
-module.exports = { startRealtimePolling, getPollingStatus };
+  devicePollingState.isRunning = true;
+  pollDevicesOnce();
+
+  const timer = setInterval(() => {
+    pollDevicesOnce();
+  }, config.devicePollIntervalMs || 10000);
+
+  return () => {
+    clearInterval(timer);
+    devicePollingState.isRunning = false;
+  };
+};
+
+const getPollingStatus = () => ({ ...pollingState });
+const getDevicePollingStatus = () => ({ ...devicePollingState });
+
+module.exports = {
+  startRealtimePolling,
+  startDevicePolling,
+  getPollingStatus,
+  getDevicePollingStatus
+};
