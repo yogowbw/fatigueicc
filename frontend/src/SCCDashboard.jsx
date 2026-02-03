@@ -1181,16 +1181,18 @@ const SCCDashboard = () => {
                           <Truck className={`w-[2vh] h-[2vh] ${darkMode ? 'text-slate-300' : 'text-slate-600'}`} />
                         </div>
                         <div>
-                          <h4 className={`font-bold text-[clamp(0.8rem,1vh,1rem)] ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>{alert.unit}</h4>
+                          <h4 className={`font-bold text-[clamp(0.8rem,1vh,1rem)] ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>
+                            {alert.unit || 'Unknown'}
+                          </h4>
                           <p className="text-[9px] text-slate-500">
-                            {alert.operator} • {alert.count}x Today
+                            {alert.operator || 'Unknown'} • {alert.count}x Today
                           </p>
                         </div>
                       </div>
                       <div className={`text-[9px] p-1.5 rounded flex justify-between items-center ${darkMode ? 'bg-slate-900' : 'bg-slate-100'}`}>
                         <div className="flex items-center gap-1 text-slate-500 font-medium">
                           <Map size={10} />
-                          <span>{alert.location}</span>
+                          <span>{getAreaLabel(alert)}</span>
                         </div>
                         <div className="flex items-center gap-1 text-red-400 font-mono font-bold animate-pulse">
                           <Clock size={10} />
