@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const DEMO_MODE = (import.meta.env.VITE_DEMO_MODE ?? 'true') === 'true';
 const TIME_ZONE = import.meta.env.VITE_TIME_ZONE || 'Asia/Makassar';
 const TIME_LABEL = import.meta.env.VITE_TIME_LABEL || 'WITA';
 
@@ -87,6 +88,7 @@ const SCCDashboard = () => {
   const ITEMS_DELAYED = 5;
 
   const addNotification = useCallback((title, message, type = 'critical', meta = {}) => {
+    if (DEMO_MODE) return;
     const id = Date.now() + Math.random();
     const newNotif = { id, title, message, type, ...meta };
     setNotifications((prev) => [newNotif, ...prev]);
@@ -209,6 +211,10 @@ const SCCDashboard = () => {
   }, []);
 
   useEffect(() => {
+    if (DEMO_MODE) {
+      setIsSyncing(false);
+      return;
+    }
     let isMounted = true;
 
     const fetchOverview = async () => {
@@ -279,6 +285,115 @@ const SCCDashboard = () => {
     };
   }, [addNotification, getAlertKey, playAlarm, trackSeenAlert]);
 
+  useEffect(() => {
+    if (!DEMO_MODE) return;
+
+    const demoAlerts = [
+      {
+        id: '02590e78-01d2-4ef8-ae6e-4b3cee1d6c2e',
+        unit: 'H489',
+        operator: 'Unknown',
+        type: 'Fatigue',
+        fatigue: 'Eyes Closing',
+        area: 'Mining',
+        groupName: 'CSA 35',
+        location: 'CSA 35',
+        time: '20:42:06',
+        date: '2026-02-02',
+        status: 'Open',
+        speed: '56.07 km/h',
+        count: 1,
+        photoUrl:
+          'https://mdvr.transtrack.id:36301/fileSrv/fileDown.php?filePath=RDovU2VydmVyTm9kZTEvRXZpZGVuY2UvaHRkb2NzL3Zzc0ZpbGVzL2hmdHAvUkVDLUFMQVJNLzIwMjYwMjAyLzg2NzM5NTA3ODgwNjQxNy8yMDQyMDZfNjUvMV82NF82NV8yXzE3NzAwNjQ5MjZfMC5qcGc%3D&ipaddr=34.124.162.30&dn=867395078806417_ch2_20260202204206_20260202204206__.jpg&token=7b0921ff0e66fe8912feec95f2717493',
+        latitude: -2.290488,
+        longitude: 114.920677
+      },
+      {
+        id: 'followed-mining-1',
+        unit: 'H516',
+        operator: 'Unknown',
+        type: 'Fatigue',
+        fatigue: 'Eyes Closing',
+        area: 'Mining',
+        groupName: 'CSA 65',
+        location: 'CSA 65',
+        time: '10:12:00',
+        date: '2026-02-02',
+        status: 'Followed Up',
+        speed: '64.21 km/h',
+        count: 1
+      },
+      {
+        id: 'followed-mining-2',
+        unit: 'H353',
+        operator: 'Unknown',
+        type: 'Fatigue',
+        fatigue: 'Eyes Closing',
+        area: 'Mining',
+        groupName: 'CSA 35',
+        location: 'CSA 35',
+        time: '09:18:15',
+        date: '2026-02-02',
+        status: 'Followed Up',
+        speed: '51.20 km/h',
+        count: 1
+      },
+      {
+        id: 'followed-mining-3',
+        unit: 'D3-737',
+        operator: 'Unknown',
+        type: 'Fatigue',
+        fatigue: 'Yawning',
+        area: 'Mining',
+        groupName: 'Kerinci-Riau',
+        location: 'Kerinci-Riau',
+        time: '16:56:40',
+        date: '2026-02-02',
+        status: 'Followed Up',
+        speed: '22.64 km/h',
+        count: 1
+      },
+      {
+        id: 'followed-hauling-1',
+        unit: 'HD-777',
+        operator: 'Unknown',
+        type: 'Fatigue',
+        fatigue: 'Eyes Closing',
+        area: 'Hauling',
+        groupName: 'Hauling Line A',
+        location: 'Hauling Line A',
+        time: '11:20:25',
+        date: '2026-02-02',
+        status: 'Followed Up',
+        speed: '14.33 km/h',
+        count: 1
+      },
+      {
+        id: 'followed-hauling-2',
+        unit: 'WT-05',
+        operator: 'Unknown',
+        type: 'Fatigue',
+        fatigue: 'Yawning',
+        area: 'Hauling',
+        groupName: 'Hauling Line B',
+        location: 'Hauling Line B',
+        time: '12:28:16',
+        date: '2026-02-02',
+        status: 'Followed Up',
+        speed: '15.59 km/h',
+        count: 1
+      }
+    ];
+
+    setAlerts(demoAlerts);
+    setDeviceHealth({
+      total: 6,
+      online: 6,
+      offline: 0,
+      coverage: 100
+    });
+  }, []);
+
   const getOpenDurationValue = (timeStr) => {
     if (!timeStr) return 0;
     const parts = timeStr.split(/[:.]/);
@@ -306,6 +421,17 @@ const SCCDashboard = () => {
     []
   );
 
+  const handleSelectAlert = useCallback(
+    (alert) => {
+      if (DEMO_MODE) {
+        setSelectedAlert(alerts[0] || alert);
+        return;
+      }
+      setSelectedAlert(alert);
+    },
+    [alerts]
+  );
+
   const filteredAlertsByArea = useMemo(() => {
     return selectedArea === 'All'
       ? alerts
@@ -313,6 +439,7 @@ const SCCDashboard = () => {
   }, [alerts, selectedArea]);
 
   const highRiskOperators = useMemo(() => {
+    if (DEMO_MODE) return [];
     const getAlertTimestamp = (alert) => {
       if (alert?.timestamp) {
         const parsed = new Date(alert.timestamp).getTime();
@@ -365,6 +492,7 @@ const SCCDashboard = () => {
   }, [filteredAlertsByArea]);
 
   const highFreqZones = useMemo(() => {
+    if (DEMO_MODE) return [];
     const zoneMap = {};
     filteredAlertsByArea.forEach((a) => {
       const areaLabel = getAreaLabel(a);
@@ -390,6 +518,7 @@ const SCCDashboard = () => {
   }, [alerts, selectedArea, selectedLocationFilter, getAreaLabel]);
 
   const overdueAlerts = useMemo(() => {
+    if (DEMO_MODE) return [];
     return filteredAlertsByArea.filter((alert) => {
       return alert.status === 'Open' && getOpenDurationValue(alert.time) > 30;
     });
@@ -964,7 +1093,7 @@ const SCCDashboard = () => {
                     paginate(overdueAlerts, delayedPage, ITEMS_DELAYED).map((alert) => (
                       <div
                         key={alert.id}
-                        onClick={() => setSelectedAlert(alert)}
+                        onClick={() => handleSelectAlert(alert)}
                         className={`relative group p-1.5 rounded border flex justify-between items-center cursor-pointer transition-all hover:bg-red-500/10 hover:border-red-400 ${
                           darkMode ? 'bg-slate-900 border-red-500/30' : 'bg-white border-red-200 shadow-sm'
                         }`}
@@ -1151,7 +1280,7 @@ const SCCDashboard = () => {
                           ? 'bg-slate-800 border-l-4 border-l-red-500 border-y-slate-700 border-r-slate-700 hover:border-slate-500'
                           : 'bg-white border-l-4 border-l-red-500 border-y-slate-200 border-r-slate-200 shadow-sm hover:shadow-md'
                       }`}
-                      onClick={() => setSelectedAlert(alert)}
+                      onClick={() => handleSelectAlert(alert)}
                     >
                       <div className="flex justify-between items-start mb-1">
                         <div className="flex items-center gap-2">
