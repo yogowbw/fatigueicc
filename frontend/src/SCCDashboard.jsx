@@ -421,6 +421,17 @@ const SCCDashboard = () => {
     []
   );
 
+  const demoTimeString = useMemo(() => {
+    if (!DEMO_MODE) return null;
+    const demoDate = new Date(currentTime.getTime() - 40 * 60 * 1000);
+    return demoDate.toLocaleTimeString('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      timeZone: TIME_ZONE
+    });
+  }, [currentTime]);
+
   const handleSelectAlert = useCallback(
     (alert) => {
       if (DEMO_MODE) {
@@ -1269,7 +1280,9 @@ const SCCDashboard = () => {
                     )}
                   </div>
                 ) : (
-                  paginate(filteredAlerts, activeFatiguePage, dynamicItemsPerPage.activeFatigue).map((alert) => (
+                  paginate(filteredAlerts, activeFatiguePage, dynamicItemsPerPage.activeFatigue).map((alert) => {
+                    const displayTime = DEMO_MODE ? demoTimeString : alert.time;
+                    return (
                     <div
                       key={alert.id}
                       className={`relative p-[1vh] rounded-lg border transition-all hover:scale-[1.01] cursor-pointer group ${
@@ -1284,7 +1297,7 @@ const SCCDashboard = () => {
                           <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-red-600 text-white`}>
                             {alert.fatigue || alert.type || 'Fatigue'}
                           </span>
-                          <span className="text-[10px] font-mono text-slate-500">{alert.time}</span>
+                          <span className="text-[10px] font-mono text-slate-500">{displayTime}</span>
                         </div>
                         <span className="text-[9px] text-red-500 font-bold flex items-center gap-1 animate-pulse">
                           <AlertTriangle size={8} /> ACTIVE
@@ -1310,11 +1323,12 @@ const SCCDashboard = () => {
                         </div>
                         <div className="flex items-center gap-1 text-red-400 font-mono font-bold animate-pulse">
                           <Clock size={10} />
-                          <span>+{getOpenDuration(alert.time)}m</span>
+                          <span>+{getOpenDuration(displayTime)}m</span>
                         </div>
                       </div>
                     </div>
-                  ))
+                  );
+                  })
                 )}
               </div>
               <PaginationControls currentPage={activeFatiguePage} totalPages={Math.ceil(filteredAlerts.length / dynamicItemsPerPage.activeFatigue)} onPageChange={setActiveFatiguePage} />
