@@ -26,6 +26,11 @@ VITE_TIME_ZONE=Asia/Makassar
 VITE_TIME_LABEL=WITA
 ```
 
+Untuk memperbesar tampilan di layar besar:
+```
+VITE_UI_SCALE=1.15
+```
+
 ## Arsitektur Singkat
 
 1. **Polling Realtime API** (1 detik)

@@ -5,3 +5,10 @@ body,
 #root {
   height: 100%;
 }
+
+.dashboard-scale {
+  transform: scale(var(--ui-scale, 1));
+  transform-origin: top left;
+  width: calc(100% / var(--ui-scale, 1));
+  height: calc(100% / var(--ui-scale, 1));
+}

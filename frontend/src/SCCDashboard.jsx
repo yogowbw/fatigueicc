@@ -30,6 +30,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 const DEMO_MODE = (import.meta.env.VITE_DEMO_MODE ?? 'true') === 'true';
 const TIME_ZONE = import.meta.env.VITE_TIME_ZONE || 'Asia/Makassar';
 const TIME_LABEL = import.meta.env.VITE_TIME_LABEL || 'WITA';
+const UI_SCALE_ENV = import.meta.env.VITE_UI_SCALE;
 
 const buildApiUrl = (path) => {
   if (!API_BASE_URL) return path;
@@ -57,6 +58,29 @@ const SCCDashboard = () => {
   const fetchOverviewRef = useRef(null);
   const fetchInFlightRef = useRef(false);
   const lastErrorRef = useRef(0);
+  const getDefaultScale = useCallback(() => {
+    if (typeof window === 'undefined') return 1;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    if (width >= 2560 || height >= 1440) return 1.25;
+    if (width >= 1920 || height >= 1080) return 1.15;
+    return 1;
+  }, []);
+
+  const [uiScale, setUiScale] = useState(() => {
+    const parsed = Number(UI_SCALE_ENV);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    return getDefaultScale();
+  });
+
+  useEffect(() => {
+    if (UI_SCALE_ENV) return;
+    const handleResize = () => {
+      setUiScale(getDefaultScale());
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [getDefaultScale]);
   const seenAlertIdsRef = useRef(new Set());
   const seenAlertQueueRef = useRef([]);
   const hasSeededAlertsRef = useRef(false);
@@ -644,7 +668,8 @@ const SCCDashboard = () => {
 
   return (
     <div
-      className={`h-screen w-screen transition-colors duration-300 font-sans ${getBodyBg()} flex flex-col overflow-hidden relative selection:bg-red-500/30`}
+      className={`dashboard-scale h-screen w-screen transition-colors duration-300 font-sans ${getBodyBg()} flex flex-col overflow-hidden relative selection:bg-red-500/30`}
+      style={{ '--ui-scale': uiScale }}
     >
       {/* --- NOTIFICATIONS STACK CONTAINER --- */}
       <div className="absolute top-[10vh] right-[2vw] z-[100] flex flex-col gap-2 pointer-events-none max-w-[400px] w-[25vw]">
