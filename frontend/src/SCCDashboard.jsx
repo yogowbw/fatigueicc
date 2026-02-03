@@ -277,7 +277,8 @@ const SCCDashboard = () => {
             const unit = alert.unit || alert.sensorId || 'Unknown Unit';
             const location = alert.location || 'Unknown Location';
             addNotification('New Fatigue Alert!', `${unit} • ${fatigue} • ${location}`, 'critical', {
-              photoUrl: alert.photoUrl || null
+              photoUrl: alert.photoUrl || null,
+              alert
             });
           });
         }
@@ -676,6 +677,12 @@ const SCCDashboard = () => {
         {notifications.map((notif) => (
           <div
             key={notif.id}
+            onClick={() => {
+              if (notif.alert) {
+                setSelectedAlert(notif.alert);
+                removeNotification(notif.id);
+              }
+            }}
             className={`pointer-events-auto p-[1.5vh] rounded-lg shadow-2xl border-l-4 flex items-start gap-3 w-full animate-in slide-in-from-right duration-300 ${
               darkMode ? 'bg-slate-800 border-red-500 text-white' : 'bg-white border-red-500 text-slate-800'
             }`}
@@ -698,7 +705,13 @@ const SCCDashboard = () => {
               <h4 className="font-bold text-sm truncate">{notif.title}</h4>
               <p className="text-xs opacity-80 mt-1 break-words">{notif.message}</p>
             </div>
-            <button onClick={() => removeNotification(notif.id)} className="text-slate-500 hover:text-red-500 shrink-0">
+            <button
+              onClick={(event) => {
+                event.stopPropagation();
+                removeNotification(notif.id);
+              }}
+              className="text-slate-500 hover:text-red-500 shrink-0"
+            >
               <X size={18} />
             </button>
           </div>
