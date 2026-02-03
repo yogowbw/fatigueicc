@@ -798,9 +798,6 @@ const SCCDashboard = () => {
                       </span>
                       <div className="text-xs opacity-50 mt-1">Accuracy: ±2m</div>
                     </div>
-                    <button className="flex items-center gap-2 px-6 py-3 rounded-lg bg-blue-600 text-white hover:bg-blue-700 font-bold transition-colors">
-                      <Radio size={18} /> Contact Unit
-                    </button>
                   </div>
                 </div>
               </div>
