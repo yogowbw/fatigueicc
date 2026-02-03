@@ -423,7 +423,7 @@ const SCCDashboard = () => {
 
   const demoTimeString = useMemo(() => {
     if (!DEMO_MODE) return null;
-    const demoDate = new Date(currentTime.getTime() - 40 * 60 * 1000);
+    const demoDate = new Date(currentTime.getTime() - 10 * 60 * 1000);
     return demoDate.toLocaleTimeString('id-ID', {
       hour: '2-digit',
       minute: '2-digit',
