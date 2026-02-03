@@ -400,6 +400,13 @@ Catatan:
     `alert.photoUrl` diambil dari `alarm_file` (foto pertama jika ada),
     serta `alert.latitude` dan `alert.longitude` diisi dari data GPS.
   - KPI fatigue memakai filter jenis: `FATIGUE_TYPES=Eyes Closing,Yawning`.
+  - Window per area (untuk perhitungan KPI):
+    ```
+    MINING_WINDOW_START=06:00
+    MINING_WINDOW_END=18:00
+    HAULING_WINDOW_START=05:00
+    HAULING_WINDOW_END=17:00
+    ```
   - Filter global data integrator (contoh KPI):
     ```
     INTEGRATOR_FILTER_COLUMNS=manual_verification_is_true_alarm,level

@@ -40,6 +40,54 @@ const normalizeAlertStatus = (reading) => {
   return 'Followed Up';
 };
 
+const timeToMinutes = (value) => {
+  if (!value) return null;
+  const [hours, minutes, seconds] = value.split(':').map((part) => Number(part));
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  const safeSeconds = Number.isFinite(seconds) ? seconds : 0;
+  return hours * 60 + minutes + safeSeconds / 60;
+};
+
+const getAlertLocalMinutes = (alert) => {
+  if (alert?.time) {
+    return timeToMinutes(alert.time);
+  }
+  if (alert?.timestamp) {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: config.timeZone,
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    }).formatToParts(new Date(alert.timestamp));
+    const hours = Number(parts.find((p) => p.type === 'hour')?.value);
+    const minutes = Number(parts.find((p) => p.type === 'minute')?.value);
+    const seconds = Number(parts.find((p) => p.type === 'second')?.value);
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+    return hours * 60 + minutes + (Number.isFinite(seconds) ? seconds : 0) / 60;
+  }
+  return null;
+};
+
+const isWithinWindow = (minutes, window) => {
+  if (minutes === null || !window?.start || !window?.end) return true;
+  const start = timeToMinutes(window.start);
+  const end = timeToMinutes(window.end);
+  if (start === null || end === null) return true;
+  if (start <= end) {
+    return minutes >= start && minutes <= end;
+  }
+  return minutes >= start || minutes <= end;
+};
+
+const filterAlertsByAreaWindow = (alerts) => {
+  return alerts.filter((alert) => {
+    const window = config.areaWindows?.[alert.area];
+    const minutes = getAlertLocalMinutes(alert);
+    return isWithinWindow(minutes, window);
+  });
+};
+
 const inferArea = (sensorId, meta) => {
   if (meta && meta.area) return meta.area;
   if (!sensorId) return 'Mining';
@@ -278,6 +326,7 @@ const createDashboardService = ({ cache, eventCache, pollingStatus }) => {
     const sensors = snapshot.sensors;
     const eventReadings = eventCache ? eventCache.getAll() : sensors;
     const alerts = eventReadings.map(toAlert);
+    const metricsAlerts = filterAlertsByAreaWindow(alerts);
     const now = new Date();
 
     return {
@@ -294,12 +343,12 @@ const createDashboardService = ({ cache, eventCache, pollingStatus }) => {
           : resolveDeviceHealth(sensors),
       sensors,
       alerts,
-      stats: computeStats(alerts),
-      areaSummary: computeAreaSummary(alerts),
-      locationStats: computeLocationStats(alerts),
-      highRiskOperators: computeHighRiskOperators(alerts),
-      highRiskZones: computeHighRiskZones(alerts),
-      overdueAlerts: computeOverdueAlerts(alerts, now)
+      stats: computeStats(metricsAlerts),
+      areaSummary: computeAreaSummary(metricsAlerts),
+      locationStats: computeLocationStats(metricsAlerts),
+      highRiskOperators: computeHighRiskOperators(metricsAlerts),
+      highRiskZones: computeHighRiskZones(metricsAlerts),
+      overdueAlerts: computeOverdueAlerts(metricsAlerts, now)
     };
   };
 

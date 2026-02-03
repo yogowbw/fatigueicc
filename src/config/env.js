@@ -64,6 +64,16 @@ const config = {
     .split(',')
     .map((value) => value.trim())
     .filter(Boolean),
+  areaWindows: {
+    Mining: {
+      start: process.env.MINING_WINDOW_START || '06:00',
+      end: process.env.MINING_WINDOW_END || '18:00'
+    },
+    Hauling: {
+      start: process.env.HAULING_WINDOW_START || '05:00',
+      end: process.env.HAULING_WINDOW_END || '17:00'
+    }
+  },
   areaMapping: {
     haulingGroupKeywords: toList(
       process.env.HAULING_GROUP_KEYWORDS,
