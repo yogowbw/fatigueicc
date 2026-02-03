@@ -70,6 +70,7 @@ const toAlert = (reading) => {
     fatigue,
     photoUrl: meta.photoUrl || null,
     area,
+    groupName: meta.groupName || null,
     location,
     latitude:
       Number.isFinite(Number(meta.latitude)) ? Number(meta.latitude) : null,

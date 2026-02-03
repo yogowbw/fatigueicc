@@ -336,7 +336,8 @@ const SCCDashboard = () => {
   const filteredAlerts = useMemo(() => {
     return alerts.filter((alert) => {
       if (selectedLocationFilter) {
-        return alert.unit === selectedLocationFilter && alert.status === 'Open';
+        const areaLabel = alert.groupName || alert.area || 'Unknown';
+        return areaLabel === selectedLocationFilter && alert.status === 'Open';
       }
       const areaMatch = selectedArea === 'All' || alert.area === selectedArea;
       const statusMatch = alert.status === 'Open';
@@ -376,11 +377,11 @@ const SCCDashboard = () => {
 
     openAlerts.forEach((alert) => {
       if (stats[alert.area]) {
-        const unitKey = alert.unit || alert.sensorId || 'Unknown Unit';
-        if (!stats[alert.area][unitKey]) {
-          stats[alert.area][unitKey] = 0;
+        const areaLabel = alert.groupName || alert.area || 'Unknown';
+        if (!stats[alert.area][areaLabel]) {
+          stats[alert.area][areaLabel] = 0;
         }
-        stats[alert.area][unitKey]++;
+        stats[alert.area][areaLabel]++;
       }
     });
     return stats;
@@ -832,15 +833,15 @@ const SCCDashboard = () => {
                       <div className="flex-1 flex flex-col justify-between overflow-hidden" ref={miningListContainerRef}>
                         <div className="grid grid-cols-2 gap-2 mt-1">
                           {Object.keys(locationStats.Mining).length > 0 ? (
-                            paginate(Object.entries(locationStats.Mining), miningPage, dynamicItemsPerPage.mining).map(([unit, count]) => (
+                            paginate(Object.entries(locationStats.Mining), miningPage, dynamicItemsPerPage.mining).map(([areaLabel, count]) => (
                               <div
-                                key={unit}
+                                key={areaLabel}
                                 onClick={() => {
                                   setSelectedArea('Mining');
-                                  setSelectedLocationFilter(unit);
+                                  setSelectedLocationFilter(areaLabel);
                                 }}
                                 className={`p-1.5 rounded border flex flex-col justify-between items-center text-center transition-all cursor-pointer hover:scale-105 ${
-                                  selectedLocationFilter === unit
+                                  selectedLocationFilter === areaLabel
                                     ? darkMode
                                       ? 'bg-blue-900/40 border-blue-400 ring-1 ring-blue-500'
                                       : 'bg-blue-50 border-blue-500 ring-1 ring-blue-200'
@@ -849,7 +850,7 @@ const SCCDashboard = () => {
                                       : 'bg-white border-slate-200 shadow-sm hover:border-blue-300'
                                 }`}
                               >
-                                <span className={`text-[9px] font-medium mb-0.5 line-clamp-1 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{unit}</span>
+                                <span className={`text-[9px] font-medium mb-0.5 line-clamp-1 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{areaLabel}</span>
                                 <span className="text-lg font-black text-red-500 leading-none">{count}</span>
                               </div>
                             ))
@@ -879,15 +880,15 @@ const SCCDashboard = () => {
                       <div className="flex-1 flex flex-col justify-between overflow-hidden" ref={haulingListContainerRef}>
                         <div className="grid grid-cols-2 gap-2 mt-1">
                           {Object.keys(locationStats.Hauling).length > 0 ? (
-                            paginate(Object.entries(locationStats.Hauling), haulingPage, dynamicItemsPerPage.hauling).map(([unit, count]) => (
+                            paginate(Object.entries(locationStats.Hauling), haulingPage, dynamicItemsPerPage.hauling).map(([areaLabel, count]) => (
                               <div
-                                key={unit}
+                                key={areaLabel}
                                 onClick={() => {
                                   setSelectedArea('Hauling');
-                                  setSelectedLocationFilter(unit);
+                                  setSelectedLocationFilter(areaLabel);
                                 }}
                                 className={`p-1.5 rounded border flex flex-col justify-between items-center text-center transition-all cursor-pointer hover:scale-105 ${
-                                  selectedLocationFilter === unit
+                                  selectedLocationFilter === areaLabel
                                     ? darkMode
                                       ? 'bg-teal-900/40 border-teal-400 ring-1 ring-teal-500'
                                       : 'bg-teal-50 border-teal-500 ring-1 ring-teal-200'
@@ -896,7 +897,7 @@ const SCCDashboard = () => {
                                       : 'bg-white border-slate-200 shadow-sm hover:border-teal-300'
                                 }`}
                               >
-                                <span className={`text-[9px] font-medium mb-0.5 line-clamp-1 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{unit}</span>
+                                <span className={`text-[9px] font-medium mb-0.5 line-clamp-1 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{areaLabel}</span>
                                 <span className="text-lg font-black text-red-500 leading-none">{count}</span>
                               </div>
                             ))
