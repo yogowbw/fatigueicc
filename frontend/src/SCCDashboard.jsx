@@ -313,16 +313,54 @@ const SCCDashboard = () => {
   }, [alerts, selectedArea]);
 
   const highRiskOperators = useMemo(() => {
-    const opMap = {};
-    filteredAlertsByArea.forEach((a) => {
-      if (!opMap[a.operator]) {
-        opMap[a.operator] = { name: a.operator, unit: a.unit, events: 0, status: 'Active' };
+    const getAlertTimestamp = (alert) => {
+      if (alert?.timestamp) {
+        const parsed = new Date(alert.timestamp).getTime();
+        return Number.isFinite(parsed) ? parsed : 0;
       }
-      opMap[a.operator].events += a.count;
+      if (alert?.date && alert?.time) {
+        const parsed = new Date(`${alert.date}T${alert.time}`).getTime();
+        return Number.isFinite(parsed) ? parsed : 0;
+      }
+      return 0;
+    };
+
+    const unitMap = {};
+    filteredAlertsByArea.forEach((alert) => {
+      const unitKey = alert.unit || alert.sensorId || 'Unknown Unit';
+      if (!unitMap[unitKey]) {
+        unitMap[unitKey] = {
+          unit: unitKey,
+          operator: alert.operator,
+          events: 0,
+          maxFollowedUpAt: null,
+          maxOpenAt: null
+        };
+      }
+      const entry = unitMap[unitKey];
+      entry.events += alert.count || 1;
+      const ts = getAlertTimestamp(alert);
+      if (alert.status === 'Followed Up') {
+        entry.maxFollowedUpAt = Math.max(entry.maxFollowedUpAt ?? 0, ts);
+      }
+      if (alert.status === 'Open') {
+        entry.maxOpenAt = Math.max(entry.maxOpenAt ?? 0, ts);
+      }
     });
 
-    return Object.values(opMap)
-      .filter((op) => op.events > 1)
+    return Object.values(unitMap)
+      .filter(
+        (entry) =>
+          entry.maxFollowedUpAt &&
+          entry.maxOpenAt &&
+          entry.maxOpenAt > entry.maxFollowedUpAt
+      )
+      .map((entry) => ({
+        name: entry.operator || 'Unknown Driver',
+        unit: entry.unit,
+        events: entry.events,
+        status: 'Active'
+      }))
       .sort((a, b) => b.events - a.events);
   }, [filteredAlertsByArea]);
 
