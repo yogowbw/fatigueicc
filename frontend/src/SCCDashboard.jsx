@@ -301,6 +301,11 @@ const SCCDashboard = () => {
   const formatCoord = (value) =>
     Number.isFinite(Number(value)) ? Number(value).toFixed(6) : '-';
 
+  const getAreaLabel = useCallback(
+    (alert) => alert?.groupName || alert?.area || 'Unknown',
+    []
+  );
+
   const filteredAlertsByArea = useMemo(() => {
     return selectedArea === 'All'
       ? alerts
@@ -324,26 +329,27 @@ const SCCDashboard = () => {
   const highFreqZones = useMemo(() => {
     const zoneMap = {};
     filteredAlertsByArea.forEach((a) => {
-      if (!zoneMap[a.location]) {
-        zoneMap[a.location] = { location: a.location, count: 0, area: a.area };
+      const areaLabel = getAreaLabel(a);
+      if (!zoneMap[areaLabel]) {
+        zoneMap[areaLabel] = { location: areaLabel, count: 0, area: a.area };
       }
-      zoneMap[a.location].count += 1;
+      zoneMap[areaLabel].count += 1;
     });
 
     return Object.values(zoneMap).sort((a, b) => b.count - a.count);
-  }, [filteredAlertsByArea]);
+  }, [filteredAlertsByArea, getAreaLabel]);
 
   const filteredAlerts = useMemo(() => {
     return alerts.filter((alert) => {
       if (selectedLocationFilter) {
-        const areaLabel = alert.groupName || alert.area || 'Unknown';
+        const areaLabel = getAreaLabel(alert);
         return areaLabel === selectedLocationFilter && alert.status === 'Open';
       }
       const areaMatch = selectedArea === 'All' || alert.area === selectedArea;
       const statusMatch = alert.status === 'Open';
       return areaMatch && statusMatch;
     });
-  }, [alerts, selectedArea, selectedLocationFilter]);
+  }, [alerts, selectedArea, selectedLocationFilter, getAreaLabel]);
 
   const overdueAlerts = useMemo(() => {
     return filteredAlertsByArea.filter((alert) => {
@@ -377,7 +383,7 @@ const SCCDashboard = () => {
 
     openAlerts.forEach((alert) => {
       if (stats[alert.area]) {
-        const areaLabel = alert.groupName || alert.area || 'Unknown';
+        const areaLabel = getAreaLabel(alert);
         if (!stats[alert.area][areaLabel]) {
           stats[alert.area][areaLabel] = 0;
         }
@@ -385,7 +391,7 @@ const SCCDashboard = () => {
       }
     });
     return stats;
-  }, [alerts]);
+  }, [alerts, getAreaLabel]);
 
   const stats = useMemo(() => {
     const baseData = filteredAlertsByArea;
@@ -939,7 +945,7 @@ const SCCDashboard = () => {
                       >
                         <div>
                           <div className={`font-bold text-xs ${darkMode ? 'text-white' : 'text-slate-900'}`}>{alert.unit}</div>
-                          <div className="text-[9px] text-slate-500">{alert.location}</div>
+                        <div className="text-[9px] text-slate-500">{getAreaLabel(alert)}</div>
                         </div>
                         <div className="text-right">
                           <div className="text-xs font-black text-red-500 font-mono">+{getOpenDurationValue(alert.time)}m</div>
