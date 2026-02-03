@@ -300,7 +300,7 @@ const SCCDashboard = () => {
         location: 'CSA 35',
         time: '20:42:06',
         date: '2026-02-02',
-        status: 'Open',
+        status: 'Followed Up',
         speed: '56.07 km/h',
         count: 1,
         photoUrl:
