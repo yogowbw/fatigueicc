@@ -440,11 +440,6 @@ const SCCDashboard = () => {
     return { totalToday, followedUpToday, activeOpen };
   }, [filteredAlertsByArea]);
 
-  const simulateBurst = () => {
-    if (fetchOverviewRef.current) {
-      fetchOverviewRef.current();
-    }
-  };
 
   const handleAreaTabClick = (area) => {
     setSelectedArea(area);
@@ -713,13 +708,6 @@ const SCCDashboard = () => {
         </div>
 
         <div className="flex items-center gap-[2vw]">
-          <button
-            onClick={simulateBurst}
-            className={`p-[0.8vh] rounded-full transition-all hover:bg-slate-700 active:scale-95 text-amber-500 border border-amber-500/30`}
-            title="Refresh Data"
-          >
-            <Zap size={20} className="w-[2vh] h-[2vh] fill-amber-500" />
-          </button>
 
           <div
             className={`hidden md:flex items-center gap-4 px-[1.5vw] py-[0.6vh] rounded-full border ${
