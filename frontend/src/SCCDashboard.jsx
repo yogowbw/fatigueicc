@@ -46,6 +46,7 @@ const SCCDashboard = () => {
   const [notifications, setNotifications] = useState([]);
   const [selectedAlert, setSelectedAlert] = useState(null);
   const [selectedRiskArea, setSelectedRiskArea] = useState(null);
+  const [selectedRecurrentUnit, setSelectedRecurrentUnit] = useState(null);
   const [selectedLocationFilter, setSelectedLocationFilter] = useState(null);
 
   const [alerts, setAlerts] = useState([]);
@@ -232,6 +233,7 @@ const SCCDashboard = () => {
     setRecurrentPage(1);
     setHighRiskPage(1);
     setSelectedRiskArea(null);
+    setSelectedRecurrentUnit(null);
   }, [selectedArea, selectedLocationFilter]);
 
   useEffect(() => {
@@ -663,6 +665,55 @@ const SCCDashboard = () => {
     };
   }, [selectedRiskArea, filteredAlertsByArea, getAreaLabel, getAlertTimestamp]);
 
+  const selectedRecurrentSummary = useMemo(() => {
+    if (!selectedRecurrentUnit) return null;
+    const unitAlerts = filteredAlertsByArea.filter((alert) => {
+      const unitKey = alert.unit || alert.sensorId || 'Unknown';
+      return unitKey === selectedRecurrentUnit;
+    });
+    const totalEvents = unitAlerts.reduce(
+      (sum, alert) => sum + (Number(alert.count) || 1),
+      0
+    );
+    const sortedDesc = [...unitAlerts].sort(
+      (a, b) => getAlertTimestamp(b) - getAlertTimestamp(a)
+    );
+    const lastAlert = sortedDesc[0] || null;
+    const lastStatus = lastAlert?.status || 'Unknown';
+
+    const fatigueCounts = {};
+    unitAlerts.forEach((alert) => {
+      const fatigue = alert.fatigue || alert.type || 'Fatigue';
+      fatigueCounts[fatigue] =
+        (fatigueCounts[fatigue] || 0) + (Number(alert.count) || 1);
+    });
+    const dominantFatigue = Object.entries(fatigueCounts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([fatigue]) => fatigue)[0] || 'Fatigue';
+
+    const sortedAsc = [...unitAlerts].sort(
+      (a, b) => getAlertTimestamp(a) - getAlertTimestamp(b)
+    );
+    let recurrenceCount = 0;
+    let lastSeenStatus = null;
+    sortedAsc.forEach((alert) => {
+      const status = alert.status || 'Open';
+      if (lastSeenStatus === 'Followed Up' && status === 'Open') {
+        recurrenceCount += 1;
+      }
+      lastSeenStatus = status;
+    });
+
+    return {
+      unit: selectedRecurrentUnit,
+      totalEvents,
+      lastStatus,
+      lastAlert,
+      dominantFatigue,
+      recurrenceCount
+    };
+  }, [selectedRecurrentUnit, filteredAlertsByArea, getAlertTimestamp]);
+
   const overdueAlerts = useMemo(() => {
     if (DEMO_MODE) return [];
     return filteredAlertsByArea.filter((alert) => {
@@ -956,6 +1007,103 @@ const SCCDashboard = () => {
                         ))}
                       </div>
                     )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL DETAIL RECURRENT UNIT --- */}
+      {selectedRecurrentUnit && selectedRecurrentSummary && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div
+            className={`w-full max-w-[85vw] lg:max-w-[70vw] rounded-2xl shadow-2xl overflow-hidden flex flex-col ${
+              darkMode ? 'bg-slate-900 text-white border border-slate-700' : 'bg-slate-100 text-slate-900'
+            }`}
+          >
+            <div className="p-[2vh] lg:p-[3vh] border-b border-inherit flex justify-between items-start shrink-0">
+              <div>
+                <div className="flex items-center gap-3 mb-2">
+                  <h2 className="text-2xl lg:text-3xl font-bold flex items-center gap-3">
+                    <span className="bg-red-500 text-white p-1.5 rounded">
+                      <Users size={28} />
+                    </span>
+                    RECURRENT UNIT DETAIL
+                  </h2>
+                  <span className="px-3 py-1 bg-red-100 text-red-600 rounded-full text-sm font-bold border border-red-200 uppercase tracking-wider">
+                    {selectedRecurrentSummary.unit}
+                  </span>
+                </div>
+                <p className="opacity-70 text-lg lg:text-xl">
+                  Total Events Today:{' '}
+                  <span className="font-mono font-bold text-red-400">
+                    {selectedRecurrentSummary.totalEvents}
+                  </span>
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedRecurrentUnit(null)}
+                className="p-2 hover:bg-slate-700/50 rounded-full transition-colors"
+              >
+                <X size={32} />
+              </button>
+            </div>
+
+            <div className="p-[2vh] lg:p-[3vh] grid grid-cols-1 gap-[2vh]">
+              {selectedRecurrentSummary.totalEvents === 0 ? (
+                <div className="flex items-center justify-center text-slate-500 text-lg">
+                  No data available for this unit.
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-[1.5vh]">
+                    <div
+                      className={`p-[1.5vh] rounded-xl border ${
+                        darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'
+                      }`}
+                    >
+                      <div className="text-xs opacity-60 uppercase tracking-wider">Last Status</div>
+                      <div className={`text-2xl font-bold ${selectedRecurrentSummary.lastStatus === 'Followed Up' ? 'text-emerald-500' : 'text-red-500'}`}>
+                        {selectedRecurrentSummary.lastStatus}
+                      </div>
+                    </div>
+                    <div
+                      className={`p-[1.5vh] rounded-xl border ${
+                        darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'
+                      }`}
+                    >
+                      <div className="text-xs opacity-60 uppercase tracking-wider">Last Alert Time</div>
+                      <div className="text-lg font-mono font-semibold text-blue-400">
+                        {formatAlertDateTime(selectedRecurrentSummary.lastAlert)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-[1.5vh]">
+                    <div
+                      className={`p-[1.5vh] rounded-xl border ${
+                        darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'
+                      }`}
+                    >
+                      <div className="text-xs opacity-60 uppercase tracking-wider">Dominant Fatigue Type</div>
+                      <div className="text-2xl font-bold text-orange-500">
+                        {selectedRecurrentSummary.dominantFatigue}
+                      </div>
+                    </div>
+                    <div
+                      className={`p-[1.5vh] rounded-xl border ${
+                        darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'
+                      }`}
+                    >
+                      <div className="text-xs opacity-60 uppercase tracking-wider">
+                        Open After Followed Up
+                      </div>
+                      <div className="text-2xl font-bold text-red-400">
+                        {selectedRecurrentSummary.recurrenceCount}x
+                      </div>
+                    </div>
                   </div>
                 </>
               )}
@@ -1451,7 +1599,13 @@ const SCCDashboard = () => {
                 <div className="flex-1 space-y-1.5">
                   {highRiskOperators.length > 0 ? (
                     paginate(highRiskOperators, recurrentPage, dynamicItemsPerPage.recurrent).map((op, idx) => (
-                      <div key={idx} className={`p-1.5 rounded border-l-2 border-red-500 flex justify-between items-center ${darkMode ? 'bg-slate-900/50' : 'bg-white border border-slate-200'}`}>
+                      <div
+                        key={idx}
+                        onClick={() => setSelectedRecurrentUnit(op.unit)}
+                        className={`p-1.5 rounded border-l-2 border-red-500 flex justify-between items-center cursor-pointer transition-all hover:scale-[1.01] ${
+                          darkMode ? 'bg-slate-900/50 hover:border-slate-500' : 'bg-white border border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
                         <div>
                           <div className={`font-bold text-xs ${darkMode ? 'text-white' : 'text-slate-800'}`}>{op.unit}</div>
                           <div className="text-[9px] text-slate-500">
