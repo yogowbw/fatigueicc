@@ -45,6 +45,7 @@ const SCCDashboard = () => {
 
   const [notifications, setNotifications] = useState([]);
   const [selectedAlert, setSelectedAlert] = useState(null);
+  const [selectedRiskArea, setSelectedRiskArea] = useState(null);
   const [selectedLocationFilter, setSelectedLocationFilter] = useState(null);
 
   const [alerts, setAlerts] = useState([]);
@@ -99,6 +100,9 @@ const SCCDashboard = () => {
   const [activeFatiguePage, setActiveFatiguePage] = useState(1);
   const [recurrentPage, setRecurrentPage] = useState(1);
   const [highRiskPage, setHighRiskPage] = useState(1);
+  const [activeSortOrder, setActiveSortOrder] = useState('newest');
+  const [recurrentSortOrder, setRecurrentSortOrder] = useState('newest');
+  const [highRiskSortOrder, setHighRiskSortOrder] = useState('newest');
 
   // --- DYNAMIC ITEMS PER PAGE STATE ---
   const [dynamicItemsPerPage, setDynamicItemsPerPage] = useState({
@@ -227,6 +231,7 @@ const SCCDashboard = () => {
     setActiveFatiguePage(1);
     setRecurrentPage(1);
     setHighRiskPage(1);
+    setSelectedRiskArea(null);
   }, [selectedArea, selectedLocationFilter]);
 
   useEffect(() => {
@@ -446,6 +451,40 @@ const SCCDashboard = () => {
     []
   );
 
+  const getAlertTimestamp = useCallback((alert) => {
+    if (alert?.timestamp) {
+      const parsed = new Date(alert.timestamp).getTime();
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    if (alert?.date && alert?.time) {
+      const parsed = new Date(`${alert.date}T${alert.time}`).getTime();
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    return 0;
+  }, []);
+
+  const formatAlertDateTime = useCallback((alert) => {
+    if (!alert) return '-';
+    if (alert.date && alert.time) {
+      return `${alert.date} ${alert.time}`;
+    }
+    if (alert.timestamp) {
+      const parsed = new Date(alert.timestamp);
+      if (Number.isNaN(parsed.getTime())) return '-';
+      return parsed.toLocaleString('id-ID', {
+        timeZone: TIME_ZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      });
+    }
+    return alert.time || '-';
+  }, []);
+
   const demoTimeString = useMemo(() => {
     if (!DEMO_MODE) return null;
     const demoDate = new Date(currentTime.getTime() - 10 * 60 * 1000);
@@ -476,18 +515,6 @@ const SCCDashboard = () => {
 
   const highRiskOperators = useMemo(() => {
     if (DEMO_MODE) return [];
-    const getAlertTimestamp = (alert) => {
-      if (alert?.timestamp) {
-        const parsed = new Date(alert.timestamp).getTime();
-        return Number.isFinite(parsed) ? parsed : 0;
-      }
-      if (alert?.date && alert?.time) {
-        const parsed = new Date(`${alert.date}T${alert.time}`).getTime();
-        return Number.isFinite(parsed) ? parsed : 0;
-      }
-      return 0;
-    };
-
     const unitMap = {};
     filteredAlertsByArea.forEach((alert) => {
       const unitKey = alert.unit || alert.sensorId || 'Unknown Unit';
@@ -497,12 +524,14 @@ const SCCDashboard = () => {
           operator: alert.operator,
           events: 0,
           maxFollowedUpAt: null,
-          maxOpenAt: null
+          maxOpenAt: null,
+          lastSeenAt: null
         };
       }
       const entry = unitMap[unitKey];
       entry.events += alert.count || 1;
       const ts = getAlertTimestamp(alert);
+      entry.lastSeenAt = Math.max(entry.lastSeenAt ?? 0, ts);
       if (alert.status === 'Followed Up') {
         entry.maxFollowedUpAt = Math.max(entry.maxFollowedUpAt ?? 0, ts);
       }
@@ -522,10 +551,16 @@ const SCCDashboard = () => {
         name: entry.operator || 'Unknown Driver',
         unit: entry.unit,
         events: entry.events,
-        status: 'Active'
+        status: 'Active',
+        lastSeenAt: entry.lastSeenAt || 0
       }))
-      .sort((a, b) => b.events - a.events);
-  }, [filteredAlertsByArea]);
+      .sort((a, b) => {
+        if (recurrentSortOrder === 'oldest') {
+          return a.lastSeenAt - b.lastSeenAt;
+        }
+        return b.lastSeenAt - a.lastSeenAt;
+      });
+  }, [filteredAlertsByArea, getAlertTimestamp, recurrentSortOrder]);
 
   const highFreqZones = useMemo(() => {
     if (DEMO_MODE) return [];
@@ -533,13 +568,27 @@ const SCCDashboard = () => {
     filteredAlertsByArea.forEach((a) => {
       const areaLabel = getAreaLabel(a);
       if (!zoneMap[areaLabel]) {
-        zoneMap[areaLabel] = { location: areaLabel, count: 0, area: a.area };
+        zoneMap[areaLabel] = {
+          location: areaLabel,
+          count: 0,
+          area: a.area,
+          lastSeenAt: 0
+        };
       }
       zoneMap[areaLabel].count += 1;
+      zoneMap[areaLabel].lastSeenAt = Math.max(
+        zoneMap[areaLabel].lastSeenAt,
+        getAlertTimestamp(a)
+      );
     });
 
-    return Object.values(zoneMap).sort((a, b) => b.count - a.count);
-  }, [filteredAlertsByArea, getAreaLabel]);
+    return Object.values(zoneMap).sort((a, b) => {
+      if (highRiskSortOrder === 'oldest') {
+        return a.lastSeenAt - b.lastSeenAt;
+      }
+      return b.lastSeenAt - a.lastSeenAt;
+    });
+  }, [filteredAlertsByArea, getAreaLabel, getAlertTimestamp, highRiskSortOrder]);
 
   const filteredAlerts = useMemo(() => {
     return alerts.filter((alert) => {
@@ -552,6 +601,57 @@ const SCCDashboard = () => {
       return areaMatch && statusMatch;
     });
   }, [alerts, selectedArea, selectedLocationFilter, getAreaLabel]);
+
+  const sortedActiveAlerts = useMemo(() => {
+    const copy = [...filteredAlerts];
+    copy.sort((a, b) => {
+      const aTime = getAlertTimestamp(a);
+      const bTime = getAlertTimestamp(b);
+      if (activeSortOrder === 'oldest') {
+        return aTime - bTime;
+      }
+      return bTime - aTime;
+    });
+    return copy;
+  }, [filteredAlerts, getAlertTimestamp, activeSortOrder]);
+
+  const selectedRiskAreaSummary = useMemo(() => {
+    if (!selectedRiskArea) return null;
+    const areaAlerts = filteredAlertsByArea.filter(
+      (alert) => getAreaLabel(alert) === selectedRiskArea
+    );
+    const totalEvents = areaAlerts.reduce(
+      (sum, alert) => sum + (Number(alert.count) || 1),
+      0
+    );
+    const openCount = areaAlerts.filter((alert) => alert.status === 'Open')
+      .length;
+    const followedUpCount = areaAlerts.filter(
+      (alert) => alert.status === 'Followed Up'
+    ).length;
+    const waitingCount = areaAlerts.filter(
+      (alert) => alert.status !== 'Followed Up'
+    ).length;
+    const sortedByTime = [...areaAlerts].sort(
+      (a, b) => getAlertTimestamp(b) - getAlertTimestamp(a)
+    );
+    const newestAlert = sortedByTime[0] || null;
+    const oldestAlert = sortedByTime[sortedByTime.length - 1] || null;
+    const distinctUnits = new Set(
+      areaAlerts.map((alert) => alert.unit || alert.sensorId || 'Unknown')
+    ).size;
+
+    return {
+      area: selectedRiskArea,
+      totalEvents,
+      openCount,
+      followedUpCount,
+      waitingCount,
+      newestAlert,
+      oldestAlert,
+      distinctUnits
+    };
+  }, [selectedRiskArea, filteredAlertsByArea, getAreaLabel, getAlertTimestamp]);
 
   const overdueAlerts = useMemo(() => {
     if (DEMO_MODE) return [];
@@ -717,6 +817,122 @@ const SCCDashboard = () => {
           </div>
         ))}
       </div>
+
+      {/* --- MODAL DETAIL HIGH RISK AREA --- */}
+      {selectedRiskArea && selectedRiskAreaSummary && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div
+            className={`w-full max-w-[85vw] lg:max-w-[70vw] rounded-2xl shadow-2xl overflow-hidden flex flex-col ${
+              darkMode ? 'bg-slate-900 text-white border border-slate-700' : 'bg-slate-100 text-slate-900'
+            }`}
+          >
+            <div className="p-[2vh] lg:p-[3vh] border-b border-inherit flex justify-between items-start shrink-0">
+              <div>
+                <div className="flex items-center gap-3 mb-2">
+                  <h2 className="text-2xl lg:text-3xl font-bold flex items-center gap-3">
+                    <span className="bg-orange-500 text-white p-1.5 rounded">
+                      <MapPin size={28} />
+                    </span>
+                    HIGH RISK AREA DETAIL
+                  </h2>
+                  <span className="px-3 py-1 bg-orange-100 text-orange-600 rounded-full text-sm font-bold border border-orange-200 uppercase tracking-wider">
+                    {selectedRiskAreaSummary.area}
+                  </span>
+                </div>
+                <p className="opacity-70 text-lg lg:text-xl">
+                  Total Events:{' '}
+                  <span className="font-mono font-bold text-orange-500">
+                    {selectedRiskAreaSummary.totalEvents}
+                  </span>
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedRiskArea(null)}
+                className="p-2 hover:bg-slate-700/50 rounded-full transition-colors"
+              >
+                <X size={32} />
+              </button>
+            </div>
+
+            <div className="p-[2vh] lg:p-[3vh] grid grid-cols-1 gap-[2vh]">
+              {selectedRiskAreaSummary.totalEvents === 0 ? (
+                <div className="flex items-center justify-center text-slate-500 text-lg">
+                  No data available for this area.
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-[1.5vh]">
+                    <div
+                      className={`p-[1.5vh] rounded-xl border ${
+                        darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'
+                      }`}
+                    >
+                      <div className="text-xs opacity-60 uppercase tracking-wider">Open</div>
+                      <div className="text-2xl font-bold text-red-500">
+                        {selectedRiskAreaSummary.openCount}
+                      </div>
+                    </div>
+                    <div
+                      className={`p-[1.5vh] rounded-xl border ${
+                        darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'
+                      }`}
+                    >
+                      <div className="text-xs opacity-60 uppercase tracking-wider">Followed Up</div>
+                      <div className="text-2xl font-bold text-emerald-500">
+                        {selectedRiskAreaSummary.followedUpCount}
+                      </div>
+                    </div>
+                    <div
+                      className={`p-[1.5vh] rounded-xl border ${
+                        darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'
+                      }`}
+                    >
+                      <div className="text-xs opacity-60 uppercase tracking-wider">Waiting Follow Up</div>
+                      <div className="text-2xl font-bold text-amber-500">
+                        {selectedRiskAreaSummary.waitingCount}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-[1.5vh]">
+                    <div
+                      className={`p-[1.5vh] rounded-xl border ${
+                        darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'
+                      }`}
+                    >
+                      <div className="text-xs opacity-60 uppercase tracking-wider">Last Alert Time</div>
+                      <div className="text-lg font-mono font-semibold text-blue-400">
+                        {formatAlertDateTime(selectedRiskAreaSummary.newestAlert)}
+                      </div>
+                    </div>
+                    <div
+                      className={`p-[1.5vh] rounded-xl border ${
+                        darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'
+                      }`}
+                    >
+                      <div className="text-xs opacity-60 uppercase tracking-wider">Oldest Alert Time</div>
+                      <div className="text-lg font-mono font-semibold text-blue-400">
+                        {formatAlertDateTime(selectedRiskAreaSummary.oldestAlert)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    className={`p-[1.5vh] rounded-xl border ${
+                      darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'
+                    }`}
+                  >
+                    <div className="text-xs opacity-60 uppercase tracking-wider">Affected Units</div>
+                    <div className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                      {selectedRiskAreaSummary.distinctUnits}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* --- MODAL DETAIL ALERT --- */}
       {selectedAlert && (
@@ -1181,7 +1397,25 @@ const SCCDashboard = () => {
                     RECURRENT FATIGUE UNITS
                   </h3>
                 </div>
-                <span className="bg-red-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-full">{highRiskOperators.length} Total</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setRecurrentSortOrder((prev) => (prev === 'newest' ? 'oldest' : 'newest'))
+                    }
+                    disabled={highRiskOperators.length <= 1}
+                    className={`text-[9px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded border ${
+                      darkMode
+                        ? 'border-slate-700 text-slate-300 hover:text-white hover:border-slate-500'
+                        : 'border-slate-300 text-slate-600 hover:text-slate-800 hover:border-slate-400'
+                    } ${highRiskOperators.length <= 1 ? 'opacity-40 cursor-not-allowed' : ''}`}
+                  >
+                    {recurrentSortOrder === 'newest' ? 'Newest' : 'Oldest'}
+                  </button>
+                  <span className="bg-red-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-full">
+                    {highRiskOperators.length} Total
+                  </span>
+                </div>
               </div>
               <div className="flex-1 flex flex-col justify-between overflow-hidden" ref={recurrentListContainerRef}>
                 <div className="flex-1 space-y-1.5">
@@ -1214,13 +1448,39 @@ const SCCDashboard = () => {
                     HIGH RISK AREA
                   </h3>
                 </div>
-                <span className="bg-orange-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-full">{highFreqZones.length} Total</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setHighRiskSortOrder((prev) => (prev === 'newest' ? 'oldest' : 'newest'))
+                    }
+                    disabled={highFreqZones.length <= 1}
+                    className={`text-[9px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded border ${
+                      darkMode
+                        ? 'border-slate-700 text-slate-300 hover:text-white hover:border-slate-500'
+                        : 'border-slate-300 text-slate-600 hover:text-slate-800 hover:border-slate-400'
+                    } ${highFreqZones.length <= 1 ? 'opacity-40 cursor-not-allowed' : ''}`}
+                  >
+                    {highRiskSortOrder === 'newest' ? 'Newest' : 'Oldest'}
+                  </button>
+                  <span className="bg-orange-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-full">
+                    {highFreqZones.length} Total
+                  </span>
+                </div>
               </div>
               <div className="flex-1 flex flex-col justify-between overflow-hidden" ref={highRiskListContainerRef}>
                 <div className="flex-1 space-y-1.5">
                   {highFreqZones.length > 0 ? (
                     paginate(highFreqZones, highRiskPage, dynamicItemsPerPage.highRisk).map((zone, idx) => (
-                      <div key={idx} className={`p-1.5 rounded border flex justify-between items-center ${darkMode ? 'bg-slate-900/50 border-slate-700' : 'bg-white border-slate-200'}`}>
+                      <div
+                        key={idx}
+                        onClick={() => setSelectedRiskArea(zone.location)}
+                        className={`p-1.5 rounded border flex justify-between items-center cursor-pointer transition-all hover:scale-[1.01] ${
+                          darkMode
+                            ? 'bg-slate-900/50 border-slate-700 hover:border-slate-500'
+                            : 'bg-white border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
                         <div>
                           <div className="flex items-center gap-1.5">
                             <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
@@ -1297,7 +1557,25 @@ const SCCDashboard = () => {
                     Active Fatigue Recent
                   </h3>
                 </div>
-                <span className={`text-xs font-bold ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{filteredAlerts.length} Total</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setActiveSortOrder((prev) => (prev === 'newest' ? 'oldest' : 'newest'))
+                    }
+                    disabled={filteredAlerts.length <= 1}
+                    className={`text-[9px] font-semibold uppercase tracking-wider px-2 py-1 rounded border ${
+                      darkMode
+                        ? 'border-slate-700 text-slate-300 hover:text-white hover:border-slate-500'
+                        : 'border-slate-300 text-slate-600 hover:text-slate-800 hover:border-slate-400'
+                    } ${filteredAlerts.length <= 1 ? 'opacity-40 cursor-not-allowed' : ''}`}
+                  >
+                    {activeSortOrder === 'newest' ? 'Newest' : 'Oldest'}
+                  </button>
+                  <span className={`text-xs font-bold ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                    {filteredAlerts.length} Total
+                  </span>
+                </div>
               </div>
               <div className="flex justify-between items-center text-[9px] opacity-60">
                 <span>Recent Alerts</span>
@@ -1318,7 +1596,7 @@ const SCCDashboard = () => {
                     )}
                   </div>
                 ) : (
-                  paginate(filteredAlerts, activeFatiguePage, dynamicItemsPerPage.activeFatigue).map((alert) => {
+                  paginate(sortedActiveAlerts, activeFatiguePage, dynamicItemsPerPage.activeFatigue).map((alert) => {
                     const displayTime = DEMO_MODE ? demoTimeString : alert.time;
                     return (
                     <div
@@ -1369,7 +1647,11 @@ const SCCDashboard = () => {
                   })
                 )}
               </div>
-              <PaginationControls currentPage={activeFatiguePage} totalPages={Math.ceil(filteredAlerts.length / dynamicItemsPerPage.activeFatigue)} onPageChange={setActiveFatiguePage} />
+              <PaginationControls
+                currentPage={activeFatiguePage}
+                totalPages={Math.ceil(sortedActiveAlerts.length / dynamicItemsPerPage.activeFatigue)}
+                onPageChange={setActiveFatiguePage}
+              />
             </div>
           </div>
         </div>
