@@ -1147,9 +1147,9 @@ const SCCDashboard = () => {
                         darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'
                       }`}
                     >
-                      <div className="text-xs opacity-60 uppercase tracking-wider">Last Alert Time</div>
-                      <div className="text-lg font-mono font-semibold text-blue-400">
-                        {formatAlertDateTime(selectedRecurrentSummary.lastAlert)}
+                      <div className="text-xs opacity-60 uppercase tracking-wider">Average Time Gap</div>
+                      <div className="text-2xl font-bold text-amber-500">
+                        {formatGapMinutes(selectedRecurrentSummary.avgGapMinutes)}
                       </div>
                     </div>
                   </div>
@@ -1160,9 +1160,9 @@ const SCCDashboard = () => {
                         darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'
                       }`}
                     >
-                      <div className="text-xs opacity-60 uppercase tracking-wider">Oldest Alert Time</div>
+                      <div className="text-xs opacity-60 uppercase tracking-wider">Last Alert Time</div>
                       <div className="text-lg font-mono font-semibold text-blue-400">
-                        {formatAlertDateTime(selectedRecurrentSummary.oldestAlert)}
+                        {formatAlertDateTime(selectedRecurrentSummary.lastAlert)}
                       </div>
                     </div>
                     <div
@@ -1170,9 +1170,9 @@ const SCCDashboard = () => {
                         darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'
                       }`}
                     >
-                      <div className="text-xs opacity-60 uppercase tracking-wider">Average Time Gap</div>
-                      <div className="text-2xl font-bold text-amber-500">
-                        {formatGapMinutes(selectedRecurrentSummary.avgGapMinutes)}
+                      <div className="text-xs opacity-60 uppercase tracking-wider">Oldest Alert Time</div>
+                      <div className="text-lg font-mono font-semibold text-blue-400">
+                        {formatAlertDateTime(selectedRecurrentSummary.oldestAlert)}
                       </div>
                     </div>
                   </div>
