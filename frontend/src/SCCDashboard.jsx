@@ -31,6 +31,10 @@ const DEMO_MODE = (import.meta.env.VITE_DEMO_MODE ?? 'true') === 'true';
 const TIME_ZONE = import.meta.env.VITE_TIME_ZONE || 'Asia/Makassar';
 const TIME_LABEL = import.meta.env.VITE_TIME_LABEL || 'WITA';
 const UI_SCALE_ENV = import.meta.env.VITE_UI_SCALE;
+const UI_SCALE_STORAGE_KEY = 'scc_ui_scale';
+const SCALE_MIN = 0.8;
+const SCALE_MAX = 1.6;
+const SCALE_STEP = 0.05;
 
 const buildApiUrl = (path) => {
   if (!API_BASE_URL) return path;
@@ -48,6 +52,7 @@ const SCCDashboard = () => {
   const [selectedRiskArea, setSelectedRiskArea] = useState(null);
   const [selectedRecurrentUnit, setSelectedRecurrentUnit] = useState(null);
   const [selectedLocationFilter, setSelectedLocationFilter] = useState(null);
+  const [showScaleControls, setShowScaleControls] = useState(false);
 
   const [alerts, setAlerts] = useState([]);
   const [deviceHealth, setDeviceHealth] = useState({
@@ -60,6 +65,12 @@ const SCCDashboard = () => {
   const fetchOverviewRef = useRef(null);
   const fetchInFlightRef = useRef(false);
   const lastErrorRef = useRef(0);
+  const getStoredScale = () => {
+    if (typeof window === 'undefined') return null;
+    const raw = window.localStorage.getItem(UI_SCALE_STORAGE_KEY);
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  };
   const getDefaultScale = useCallback(() => {
     if (typeof window === 'undefined') return 1;
     const width = window.innerWidth;
@@ -72,17 +83,39 @@ const SCCDashboard = () => {
   const [uiScale, setUiScale] = useState(() => {
     const parsed = Number(UI_SCALE_ENV);
     if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    const stored = getStoredScale();
+    if (stored) return stored;
     return getDefaultScale();
+  });
+  const [hasManualScale, setHasManualScale] = useState(() => {
+    const parsed = Number(UI_SCALE_ENV);
+    if (Number.isFinite(parsed) && parsed > 0) return true;
+    return Boolean(getStoredScale());
   });
 
   useEffect(() => {
-    if (UI_SCALE_ENV) return;
+    if (hasManualScale) return;
     const handleResize = () => {
       setUiScale(getDefaultScale());
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [getDefaultScale]);
+  }, [getDefaultScale, hasManualScale]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const handleKey = (event) => {
+      if (event.key === 'Escape') {
+        setShowScaleControls(false);
+        return;
+      }
+      if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 's') {
+        setShowScaleControls((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, []);
   const seenAlertIdsRef = useRef(new Set());
   const seenAlertQueueRef = useRef([]);
   const hasSeededAlertsRef = useRef(false);
@@ -159,6 +192,25 @@ const SCCDashboard = () => {
       `${alert.sensorId || alert.unit || 'unknown'}|${alert.timestamp || alert.time || ''}`
     );
   }, []);
+
+  const bumpScale = useCallback((delta) => {
+    setUiScale((prev) => {
+      const next = Math.max(SCALE_MIN, Math.min(SCALE_MAX, prev + delta));
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(UI_SCALE_STORAGE_KEY, next.toFixed(2));
+      }
+      return next;
+    });
+    setHasManualScale(true);
+  }, []);
+
+  const resetScale = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(UI_SCALE_STORAGE_KEY);
+    }
+    setHasManualScale(false);
+    setUiScale(getDefaultScale());
+  }, [getDefaultScale]);
 
   const trackSeenAlert = useCallback((key) => {
     if (!key || seenAlertIdsRef.current.has(key)) return;
@@ -1346,7 +1398,10 @@ const SCCDashboard = () => {
             </div>
           </div>
 
-          <div className={`flex flex-col items-end ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+          <div
+            onDoubleClick={() => setShowScaleControls((prev) => !prev)}
+            className={`flex flex-col items-end relative ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}
+          >
             <span className="text-[clamp(1rem,2vh,1.8rem)] font-mono font-semibold leading-none">
               {currentTime.toLocaleTimeString('id-ID', {
                 hour: '2-digit',
@@ -1365,6 +1420,47 @@ const SCCDashboard = () => {
                 timeZone: TIME_ZONE
               })}
             </span>
+            {showScaleControls && (
+              <div
+                onClick={(event) => event.stopPropagation()}
+                className={`absolute top-full right-0 mt-2 z-[120] rounded-lg border px-3 py-2 shadow-xl ${
+                  darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-300'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => bumpScale(-SCALE_STEP)}
+                    disabled={uiScale <= SCALE_MIN + 0.001}
+                    className={`h-7 w-7 rounded font-bold ${
+                      darkMode ? 'bg-slate-800 text-white' : 'bg-slate-200 text-slate-700'
+                    } ${uiScale <= SCALE_MIN + 0.001 ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-700/50'}`}
+                  >
+                    -
+                  </button>
+                  <span className="text-xs font-mono">{Math.round(uiScale * 100)}%</span>
+                  <button
+                    type="button"
+                    onClick={() => bumpScale(SCALE_STEP)}
+                    disabled={uiScale >= SCALE_MAX - 0.001}
+                    className={`h-7 w-7 rounded font-bold ${
+                      darkMode ? 'bg-slate-800 text-white' : 'bg-slate-200 text-slate-700'
+                    } ${uiScale >= SCALE_MAX - 0.001 ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-700/50'}`}
+                  >
+                    +
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={resetScale}
+                  className={`mt-2 text-[10px] font-semibold uppercase tracking-wider ${
+                    darkMode ? 'text-slate-300 hover:text-white' : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  Auto
+                </button>
+              </div>
+            )}
           </div>
 
           <button
