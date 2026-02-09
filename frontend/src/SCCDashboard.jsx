@@ -1881,29 +1881,25 @@ const SCCDashboard = () => {
                     Active Fatigue Recent
                   </h3>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setActiveSortOrder((prev) => (prev === 'newest' ? 'oldest' : 'newest'))
-                    }
-                    disabled={filteredAlerts.length <= 1}
-                    className={`text-[9px] font-semibold uppercase tracking-wider px-2 py-1 rounded border ${
-                      darkMode
-                        ? 'border-slate-700 text-slate-300 hover:text-white hover:border-slate-500'
-                        : 'border-slate-300 text-slate-600 hover:text-slate-800 hover:border-slate-400'
-                    } ${filteredAlerts.length <= 1 ? 'opacity-40 cursor-not-allowed' : ''}`}
-                  >
-                    {activeSortOrder === 'newest' ? 'Newest' : 'Oldest'}
-                  </button>
-                  <span className={`text-xs font-bold ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
-                    {filteredAlerts.length} Total
-                  </span>
-                </div>
+                <span className={`text-xs font-bold ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                  {filteredAlerts.length} Total
+                </span>
               </div>
-              <div className="flex justify-between items-center text-[9px] opacity-60">
-                <span>Recent Alerts</span>
-                <span className="text-red-500 font-bold">OPEN ONLY</span>
+              <div className="flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setActiveSortOrder((prev) => (prev === 'newest' ? 'oldest' : 'newest'))
+                  }
+                  disabled={filteredAlerts.length <= 1}
+                  className={`text-[9px] font-semibold uppercase tracking-wider px-2 py-1 rounded border ${
+                    darkMode
+                      ? 'border-slate-700 text-slate-300 hover:text-white hover:border-slate-500'
+                      : 'border-slate-300 text-slate-600 hover:text-slate-800 hover:border-slate-400'
+                  } ${filteredAlerts.length <= 1 ? 'opacity-40 cursor-not-allowed' : ''}`}
+                >
+                  {activeSortOrder === 'newest' ? 'Newest' : 'Oldest'}
+                </button>
               </div>
             </div>
 
