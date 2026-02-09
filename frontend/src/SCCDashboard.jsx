@@ -1885,7 +1885,8 @@ const SCCDashboard = () => {
                   {filteredAlerts.length} Total
                 </span>
               </div>
-              <div className="flex items-center justify-end">
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] text-red-500 font-bold uppercase">Open Only</span>
                 <button
                   type="button"
                   onClick={() =>
