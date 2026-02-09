@@ -254,14 +254,14 @@ const SCCDashboard = () => {
       if (recurrentListContainerRef.current) {
         const height = recurrentListContainerRef.current.clientHeight;
         const availableHeight = height - PAGINATION_HEIGHT_BUFFER;
-        const rows = Math.max(1, Math.floor(availableHeight / ITEM_HEIGHT_RECURRENT));
+        const rows = Math.max(2, Math.floor(availableHeight / ITEM_HEIGHT_RECURRENT));
         setDynamicItemsPerPage((prev) => ({ ...prev, recurrent: rows }));
       }
 
       if (highRiskListContainerRef.current) {
         const height = highRiskListContainerRef.current.clientHeight;
         const availableHeight = height - PAGINATION_HEIGHT_BUFFER;
-        const rows = Math.max(1, Math.floor(availableHeight / ITEM_HEIGHT_HIGH_RISK));
+        const rows = Math.max(2, Math.floor(availableHeight / ITEM_HEIGHT_HIGH_RISK));
         setDynamicItemsPerPage((prev) => ({ ...prev, highRisk: rows }));
       }
     };
