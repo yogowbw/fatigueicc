@@ -640,6 +640,15 @@ const SCCDashboard = () => {
     const distinctUnits = new Set(
       areaAlerts.map((alert) => alert.unit || alert.sensorId || 'Unknown')
     ).size;
+    const unitCounts = {};
+    areaAlerts.forEach((alert) => {
+      const key = alert.unit || alert.sensorId || 'Unknown';
+      unitCounts[key] = (unitCounts[key] || 0) + (Number(alert.count) || 1);
+    });
+    const topUnits = Object.entries(unitCounts)
+      .map(([unit, count]) => ({ unit, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3);
 
     return {
       area: selectedRiskArea,
@@ -649,7 +658,8 @@ const SCCDashboard = () => {
       waitingCount,
       newestAlert,
       oldestAlert,
-      distinctUnits
+      distinctUnits,
+      topUnits
     };
   }, [selectedRiskArea, filteredAlertsByArea, getAreaLabel, getAlertTimestamp]);
 
@@ -926,6 +936,26 @@ const SCCDashboard = () => {
                     <div className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>
                       {selectedRiskAreaSummary.distinctUnits}
                     </div>
+                  </div>
+
+                  <div
+                    className={`p-[1.5vh] rounded-xl border ${
+                      darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'
+                    }`}
+                  >
+                    <div className="text-xs opacity-60 uppercase tracking-wider">Top Units</div>
+                    {selectedRiskAreaSummary.topUnits.length === 0 ? (
+                      <div className="text-sm text-slate-500 mt-2">No unit data</div>
+                    ) : (
+                      <div className="mt-2 space-y-1">
+                        {selectedRiskAreaSummary.topUnits.map((entry) => (
+                          <div key={entry.unit} className="flex items-center justify-between text-sm">
+                            <span className="font-semibold">{entry.unit}</span>
+                            <span className="font-mono text-orange-500">{entry.count}x</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </>
               )}
