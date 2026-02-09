@@ -487,6 +487,12 @@ const SCCDashboard = () => {
     return alert.time || '-';
   }, []);
 
+  const formatGapMinutes = useCallback((minutes) => {
+    if (!Number.isFinite(minutes)) return '-';
+    if (minutes >= 60) return `${(minutes / 60).toFixed(1)} hr`;
+    return `${minutes.toFixed(1)} min`;
+  }, []);
+
   const demoTimeString = useMemo(() => {
     if (!DEMO_MODE) return null;
     const demoDate = new Date(currentTime.getTime() - 10 * 60 * 1000);
@@ -675,10 +681,15 @@ const SCCDashboard = () => {
       (sum, alert) => sum + (Number(alert.count) || 1),
       0
     );
-    const sortedDesc = [...unitAlerts].sort(
-      (a, b) => getAlertTimestamp(b) - getAlertTimestamp(a)
-    );
-    const lastAlert = sortedDesc[0] || null;
+    const alertsWithTs = unitAlerts
+      .map((alert) => ({ alert, ts: getAlertTimestamp(alert) }))
+      .filter((item) => Number.isFinite(item.ts) && item.ts > 0)
+      .sort((a, b) => a.ts - b.ts);
+    const oldestAlert = alertsWithTs[0]?.alert || null;
+    const newestAlert = alertsWithTs.length
+      ? alertsWithTs[alertsWithTs.length - 1].alert
+      : null;
+    const lastAlert = newestAlert || null;
     const lastStatus = lastAlert?.status || 'Unknown';
 
     const fatigueCounts = {};
@@ -703,12 +714,22 @@ const SCCDashboard = () => {
       }
       lastSeenStatus = status;
     });
+    let avgGapMinutes = null;
+    if (alertsWithTs.length > 1) {
+      let totalGap = 0;
+      for (let i = 1; i < alertsWithTs.length; i += 1) {
+        totalGap += (alertsWithTs[i].ts - alertsWithTs[i - 1].ts) / 60000;
+      }
+      avgGapMinutes = totalGap / (alertsWithTs.length - 1);
+    }
 
     return {
       unit: selectedRecurrentUnit,
       totalEvents,
       lastStatus,
       lastAlert,
+      oldestAlert,
+      avgGapMinutes,
       dominantFatigue,
       recurrenceCount
     };
@@ -1077,6 +1098,29 @@ const SCCDashboard = () => {
                       <div className="text-xs opacity-60 uppercase tracking-wider">Last Alert Time</div>
                       <div className="text-lg font-mono font-semibold text-blue-400">
                         {formatAlertDateTime(selectedRecurrentSummary.lastAlert)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-[1.5vh]">
+                    <div
+                      className={`p-[1.5vh] rounded-xl border ${
+                        darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'
+                      }`}
+                    >
+                      <div className="text-xs opacity-60 uppercase tracking-wider">Oldest Alert Time</div>
+                      <div className="text-lg font-mono font-semibold text-blue-400">
+                        {formatAlertDateTime(selectedRecurrentSummary.oldestAlert)}
+                      </div>
+                    </div>
+                    <div
+                      className={`p-[1.5vh] rounded-xl border ${
+                        darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'
+                      }`}
+                    >
+                      <div className="text-xs opacity-60 uppercase tracking-wider">Average Time Gap</div>
+                      <div className="text-2xl font-bold text-amber-500">
+                        {formatGapMinutes(selectedRecurrentSummary.avgGapMinutes)}
                       </div>
                     </div>
                   </div>
