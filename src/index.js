@@ -16,9 +16,23 @@ const start = async () => {
     console.warn('SQL Server connection failed. API will still run:', error.message || error);
   }
 
-  startRealtimePolling(sensorCache, eventCache);
-  startDevicePolling();
-  startPersistenceJob(sensorCache, eventCache);
+  if (config.jobs.enableRealtimePolling) {
+    startRealtimePolling(sensorCache, eventCache);
+  } else {
+    console.log('Realtime polling is disabled by ENABLE_REALTIME_POLLING=false');
+  }
+
+  if (config.jobs.enableDevicePolling) {
+    startDevicePolling();
+  } else {
+    console.log('Device polling is disabled by ENABLE_DEVICE_POLLING=false');
+  }
+
+  if (config.jobs.enablePersistenceJob) {
+    startPersistenceJob(sensorCache, eventCache);
+  } else {
+    console.log('Persistence job is disabled by ENABLE_PERSISTENCE_JOB=false');
+  }
 
   app.listen(config.port, () => {
     console.log(`Dashboard API running on http://localhost:${config.port}`);

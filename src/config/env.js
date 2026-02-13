@@ -56,6 +56,11 @@ const config = {
   sensorApiTimeoutMs: toInt(process.env.SENSOR_API_TIMEOUT_MS, 2000),
   sensorPollIntervalMs: toInt(process.env.SENSOR_POLL_INTERVAL_MS, 1000),
   persistIntervalMs: toInt(process.env.PERSIST_INTERVAL_MS, 60000),
+  jobs: {
+    enableRealtimePolling: toBool(process.env.ENABLE_REALTIME_POLLING, true),
+    enableDevicePolling: toBool(process.env.ENABLE_DEVICE_POLLING, true),
+    enablePersistenceJob: toBool(process.env.ENABLE_PERSISTENCE_JOB, true)
+  },
   historyLookbackMinutes: toInt(process.env.HISTORY_LOOKBACK_MINUTES, 60),
   historyLimit: toInt(process.env.HISTORY_LIMIT, 200),
   alertThreshold: Number.isFinite(Number(process.env.ALERT_THRESHOLD))
