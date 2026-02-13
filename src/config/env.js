@@ -46,6 +46,9 @@ const sensorIds = sensorIdsSource
   .map((id) => id.trim())
   .filter(Boolean);
 
+const sqlServerEnv = process.env.SQL_SERVER || 'localhost';
+const sqlServerParts = sqlServerEnv.split(',');
+
 const config = {
   env: process.env.NODE_ENV || 'development',
   port: toInt(process.env.PORT, 3000),
@@ -58,8 +61,10 @@ const config = {
   alertThreshold: Number.isFinite(Number(process.env.ALERT_THRESHOLD))
     ? Number(process.env.ALERT_THRESHOLD)
     : 75,
-  timeZone: process.env.TIME_ZONE || 'Asia/Jakarta',
+  timeZone: process.env.TIME_ZONE || 'Asia/Makassar',
   defaultArea: process.env.DEFAULT_AREA || 'Mining',
+  defaultMiningLocation: process.env.DEFAULT_MINING_LOCATION || 'Manado - Front A',
+  defaultHaulingLocation: process.env.DEFAULT_HAULING_LOCATION || 'KM 10',
   fatigueTypes: (process.env.FATIGUE_TYPES || 'Eyes Closing,Yawning')
     .split(',')
     .map((value) => value.trim())
@@ -82,11 +87,19 @@ const config = {
     miningGroupKeywords: toList(process.env.MINING_GROUP_KEYWORDS, 'mining'),
     haulingUnitPrefixes: toList(
       process.env.HAULING_UNIT_PREFIXES,
-      'HD,WT'
+      'HD,WT,H'
     ),
     miningUnitPrefixes: toList(
       process.env.MINING_UNIT_PREFIXES,
       'DT,EX'
+    ),
+    haulingLocationPrefixes: toList(
+      process.env.HAULING_LOCATION_PREFIXES,
+      'KM'
+    ),
+    miningLocationPrefixes: toList(
+      process.env.MINING_LOCATION_PREFIXES,
+      ''
     )
   },
   deviceHealthMode:
@@ -117,6 +130,7 @@ const config = {
     accessToken: process.env.INTEGRATOR_ACCESS_TOKEN || '',
     loginUrl: process.env.INTEGRATOR_LOGIN_URL || '',
     devicesUrl: process.env.INTEGRATOR_DEVICES_URL || '',
+    devicesGroupedUrl: process.env.INTEGRATOR_DEVICES_GROUPED_URL || '',
     pageSize: toInt(process.env.INTEGRATOR_PAGE_SIZE, 50),
     fetchAllPages: toBool(process.env.INTEGRATOR_FETCH_ALL_PAGES, true),
     maxPages: toInt(process.env.INTEGRATOR_MAX_PAGES, 20),
@@ -125,21 +139,23 @@ const config = {
     rangeEndMode: process.env.INTEGRATOR_RANGE_END_MODE || 'now',
     filterColumns: toOptionalString(
       process.env.INTEGRATOR_FILTER_COLUMNS,
-      'manual_verification_is_true_alarm,level'
+      'alarm_type,manual_verification_is_true_alarm,level'
     ),
-    filterValue: toOptionalString(process.env.INTEGRATOR_FILTER_VALUE, 'true|3'),
-    rangeDateColumn: process.env.INTEGRATOR_RANGE_DATE_COLUMN || 'device_time'
+    filterValue: toOptionalString(process.env.INTEGRATOR_FILTER_VALUE, '132,121|true|3')
   },
   debugIntegrator: toBool(process.env.INTEGRATOR_DEBUG, false),
   sql: {
     connectionString: process.env.SQL_CONNECTION_STRING || '',
     user: process.env.SQL_USER || 'yogo',
     password: process.env.SQL_PASSWORD || 'P@$$w0rd123!@#',
-    server: process.env.SQL_SERVER || 'localhost',
+    server: sqlServerParts[0],
     database: process.env.SQL_DATABASE || 'icc',
+    port: toInt(sqlServerParts[1], 1433),
     options: {
-      encrypt: toBool(process.env.SQL_ENCRYPT, false),
-      trustServerCertificate: toBool(process.env.SQL_TRUST_CERT, true)
+      // For SQL MI, encrypt should be true and trustServerCertificate should be false.
+      // We default to these secure settings for production environments.
+      encrypt: toBool(process.env.SQL_ENCRYPT, process.env.NODE_ENV === 'production'),
+      trustServerCertificate: toBool(process.env.SQL_TRUST_CERT, process.env.NODE_ENV !== 'production')
     }
   }
 };

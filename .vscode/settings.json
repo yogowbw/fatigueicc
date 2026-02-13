@@ -1,0 +1,8 @@
+{
+    "appService.defaultWebAppToDeploy": "/subscriptions/54e4e792-4b16-4ba7-9e40-ae234776266c/resourceGroups/rg-appservices-dev-001/providers/Microsoft.Web/sites/safetycommandcenter",
+    "appService.deploySubpath": "frontend\\dist",
+    "appService.zipIgnorePattern": [
+        "node_modules{,/**}",
+        ".vscode{,/**}"
+    ]
+}

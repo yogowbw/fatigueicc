@@ -5,10 +5,17 @@ let pool = null;
 let poolPromise = null;
 
 const buildSqlConfig = () => {
+  const poolSettings = {
+    max: 10,
+    min: 0,
+    idleTimeoutMillis: 30000
+  };
+
   if (config.sql.connectionString) {
     return {
       connectionString: config.sql.connectionString,
-      options: config.sql.options
+      options: config.sql.options,
+      pool: poolSettings
     };
   }
 
@@ -16,13 +23,10 @@ const buildSqlConfig = () => {
     user: config.sql.user,
     password: config.sql.password,
     server: config.sql.server,
+    port: config.sql.port,
     database: config.sql.database,
     options: config.sql.options,
-    pool: {
-      max: 10,
-      min: 0,
-      idleTimeoutMillis: 30000
-    }
+    pool: poolSettings
   };
 };
 

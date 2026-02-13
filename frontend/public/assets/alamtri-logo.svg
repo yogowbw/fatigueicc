@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 150" width="500" height="150" preserveAspectRatio="xMidYMid meet">
+  <!-- AlamTri Geo Logo - Proportional Version -->
+  <defs>
+    <style>
+      .alamtri-text { font-family: 'Segoe UI', Arial, sans-serif; font-weight: bold; letter-spacing: -1px; }
+      .geo-text { font-family: 'Segoe UI', Arial, sans-serif; font-weight: 500; letter-spacing: 0; }
+    </style>
+  </defs>
+  
+  <!-- Main Text: AlamTri -->
+  <text x="30" y="95" font-size="72" class="alamtri-text" fill="#00355A">AlamTri</text>
+  
+  <!-- geo text below AlamTri -->
+  <text x="280" y="115" font-size="38" class="geo-text" fill="#00897B">geo</text>
+  
+  <!-- Geometric Diamond Shapes (Logo Mark) -->
+  <!-- Orange/Gold Diamond 1 (Top Left of geo) -->
+  <polygon points="340,45 360,55 340,65 320,55" fill="#D4A574" stroke="none"/>
+  
+  <!-- Orange/Gold Diamond 2 (Top Right of geo) -->
+  <polygon points="375,45 395,55 375,65 355,55" fill="#F4A460" stroke="none"/>
+  
+  <!-- Teal/Cyan Diamond 1 (Bottom Left of geo) -->
+  <polygon points="340,70 360,80 340,90 320,80" fill="#00897B" stroke="none"/>
+  
+  <!-- Teal/Cyan Diamond 2 (Bottom Right of geo) -->
+  <polygon points="375,70 395,80 375,90 355,80" fill="#009688" stroke="none"/>
+</svg>

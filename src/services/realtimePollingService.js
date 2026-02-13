@@ -50,8 +50,11 @@ const pollDevicesOnce = async () => {
   try {
     const devices = await fetchDevicesAll();
     const total = devices.length;
-    const online = devices.filter((device) => device.acc === true).length;
-    const offline = Math.max(0, total - online);
+    // Per user request: acc -1 and 0 are offline, everything else is online.
+    const offline = devices.filter(
+      (device) => device.acc === -1 || device.acc === 0
+    ).length;
+    const online = total - offline;
     const coverage = total > 0 ? Math.round((online / total) * 100) : 0;
 
     deviceHealthCache.set({
@@ -76,15 +79,20 @@ const pollDevicesOnce = async () => {
 const startRealtimePolling = (cache, eventsCache) => {
   if (pollingState.isRunning) return null;
 
+  let timerId = null;
   pollingState.isRunning = true;
-  pollOnce(cache, eventsCache);
 
-  const timer = setInterval(() => {
-    pollOnce(cache, eventsCache);
-  }, config.sensorPollIntervalMs);
+  const pollLoop = async () => {
+    await pollOnce(cache, eventsCache);
+    if (pollingState.isRunning) {
+      timerId = setTimeout(pollLoop, config.sensorPollIntervalMs);
+    }
+  };
+
+  pollLoop();
 
   return () => {
-    clearInterval(timer);
+    if (timerId) clearTimeout(timerId);
     pollingState.isRunning = false;
   };
 };
@@ -93,15 +101,20 @@ const startDevicePolling = () => {
   if (devicePollingState.isRunning) return null;
   if (config.deviceHealthMode !== 'integrator') return null;
 
+  let timerId = null;
   devicePollingState.isRunning = true;
-  pollDevicesOnce();
 
-  const timer = setInterval(() => {
-    pollDevicesOnce();
-  }, config.devicePollIntervalMs || 10000);
+  const pollLoop = async () => {
+    await pollDevicesOnce();
+    if (devicePollingState.isRunning) {
+      timerId = setTimeout(pollLoop, config.devicePollIntervalMs || 10000);
+    }
+  };
+
+  pollLoop();
 
   return () => {
-    clearInterval(timer);
+    if (timerId) clearTimeout(timerId);
     devicePollingState.isRunning = false;
   };
 };

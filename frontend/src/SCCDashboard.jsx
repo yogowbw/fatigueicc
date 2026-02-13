@@ -30,6 +30,8 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 const DEMO_MODE = (import.meta.env.VITE_DEMO_MODE ?? 'true') === 'true';
 const TIME_ZONE = import.meta.env.VITE_TIME_ZONE || 'Asia/Makassar';
 const TIME_LABEL = import.meta.env.VITE_TIME_LABEL || 'WITA';
+const AZURE_KEY = import.meta.env.VITE_AZURE_MAP_KEY || '';
+const COUNTRY = import.meta.env.VITE_AZURE_MAP_COUNTRY || 'IDN';
 const UI_SCALE_ENV = import.meta.env.VITE_UI_SCALE;
 const UI_SCALE_STORAGE_KEY = 'scc_ui_scale';
 const SCALE_MIN = 0.8;
@@ -55,6 +57,9 @@ const SCCDashboard = () => {
   const [showScaleControls, setShowScaleControls] = useState(false);
 
   const [alerts, setAlerts] = useState([]);
+  const [overviewMeta, setOverviewMeta] = useState(null);
+  const [showAreaLogReport, setShowAreaLogReport] = useState(false);
+  const [selectedAreaLogEntry, setSelectedAreaLogEntry] = useState(null);
   const [deviceHealth, setDeviceHealth] = useState({
     total: 0,
     online: 0,
@@ -65,6 +70,10 @@ const SCCDashboard = () => {
   const fetchOverviewRef = useRef(null);
   const fetchInFlightRef = useRef(false);
   const lastErrorRef = useRef(0);
+  const mapContainerRef = useRef(null);
+  const azureMapRef = useRef(null);
+  const azureMarkerRef = useRef(null);
+  const [azureMapUnavailable, setAzureMapUnavailable] = useState(false);
   const getStoredScale = () => {
     if (typeof window === 'undefined') return null;
     const raw = window.localStorage.getItem(UI_SCALE_STORAGE_KEY);
@@ -106,11 +115,17 @@ const SCCDashboard = () => {
     if (typeof window === 'undefined') return undefined;
     const handleKey = (event) => {
       if (event.key === 'Escape') {
+        setShowAreaLogReport(false);
+        setSelectedAreaLogEntry(null);
         setShowScaleControls(false);
         return;
       }
       if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 's') {
         setShowScaleControls((prev) => !prev);
+        return;
+      }
+      if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'l') {
+        setShowAreaLogReport((prev) => !prev);
       }
     };
     window.addEventListener('keydown', handleKey);
@@ -136,7 +151,6 @@ const SCCDashboard = () => {
   const [highRiskPage, setHighRiskPage] = useState(1);
   const [activeSortOrder, setActiveSortOrder] = useState('newest');
   const [recurrentSortOrder, setRecurrentSortOrder] = useState('newest');
-  const [highRiskSortOrder, setHighRiskSortOrder] = useState('newest');
 
   // --- DYNAMIC ITEMS PER PAGE STATE ---
   const [dynamicItemsPerPage, setDynamicItemsPerPage] = useState({
@@ -191,6 +205,52 @@ const SCCDashboard = () => {
       alert.id ||
       `${alert.sensorId || alert.unit || 'unknown'}|${alert.timestamp || alert.time || ''}`
     );
+  }, []);
+
+  const loadAzureMapSdk = useCallback(async () => {
+    if (typeof window === 'undefined') {
+      throw new Error('Azure Maps can only run in browser.');
+    }
+    if (window.atlas) return window.atlas;
+
+    const scriptId = 'azure-maps-sdk-script';
+    const cssId = 'azure-maps-sdk-css';
+
+    if (!document.getElementById(cssId)) {
+      const link = document.createElement('link');
+      link.id = cssId;
+      link.rel = 'stylesheet';
+      link.href = 'https://atlas.microsoft.com/sdk/javascript/mapcontrol/3/atlas.min.css';
+      document.head.appendChild(link);
+    }
+
+    const waitForAtlas = () =>
+      new Promise((resolve, reject) => {
+        let attempts = 0;
+        const check = () => {
+          if (window.atlas) {
+            resolve(window.atlas);
+            return;
+          }
+          attempts += 1;
+          if (attempts > 100) {
+            reject(new Error('Azure Maps SDK failed to load.'));
+            return;
+          }
+          setTimeout(check, 50);
+        };
+        check();
+      });
+
+    if (!document.getElementById(scriptId)) {
+      const script = document.createElement('script');
+      script.id = scriptId;
+      script.src = 'https://atlas.microsoft.com/sdk/javascript/mapcontrol/3/atlas.min.js';
+      script.async = true;
+      document.body.appendChild(script);
+    }
+
+    return waitForAtlas();
   }, []);
 
   const bumpScale = useCallback((delta) => {
@@ -334,8 +394,8 @@ const SCCDashboard = () => {
           newAlerts.slice(0, 5).forEach((alert) => {
             const fatigue = alert.fatigue || alert.type || 'Fatigue';
             const unit = alert.unit || alert.sensorId || 'Unknown Unit';
-            const location = alert.location || 'Unknown Location';
-            addNotification('New Fatigue Alert!', `${unit} • ${fatigue} • ${location}`, 'critical', {
+            const area = alert.area || 'Unknown Area';
+            addNotification('New Fatigue Alert!', `${unit} • ${fatigue} • ${area}`, 'critical', {
               photoUrl: alert.photoUrl || null,
               alert
             });
@@ -343,6 +403,7 @@ const SCCDashboard = () => {
         }
 
         setAlerts(nextAlerts);
+        setOverviewMeta(data.meta || null);
         if (data.deviceHealth) {
           setDeviceHealth(data.deviceHealth);
         }
@@ -497,9 +558,6 @@ const SCCDashboard = () => {
 
   const getOpenDuration = (timeStr) => getOpenDurationValue(timeStr);
 
-  const formatCoord = (value) =>
-    Number.isFinite(Number(value)) ? Number(value).toFixed(6) : '-';
-
   const getAreaLabel = useCallback(
     (alert) => alert?.groupName || alert?.area || 'Unknown',
     []
@@ -516,6 +574,96 @@ const SCCDashboard = () => {
     }
     return 0;
   }, []);
+
+  const selectedAlertCoordinates = useMemo(() => {
+    if (!selectedAlert) return null;
+    const latitude = Number(selectedAlert.latitude);
+    const longitude = Number(selectedAlert.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+    return { latitude, longitude };
+  }, [selectedAlert]);
+
+  useEffect(() => {
+    if (!selectedAlert) {
+      if (azureMapRef.current) {
+        azureMapRef.current.dispose();
+        azureMapRef.current = null;
+        azureMarkerRef.current = null;
+      }
+      setAzureMapUnavailable(false);
+      return;
+    }
+
+    if (!selectedAlertCoordinates || !AZURE_KEY) return;
+
+    let disposed = false;
+    const initializeMap = async () => {
+      try {
+        setAzureMapUnavailable(false);
+        const atlas = await loadAzureMapSdk();
+        if (
+          disposed ||
+          !mapContainerRef.current ||
+          !selectedAlertCoordinates
+        ) {
+          return;
+        }
+
+        const center = [
+          selectedAlertCoordinates.longitude,
+          selectedAlertCoordinates.latitude
+        ];
+        const language = COUNTRY === 'IDN' ? 'id-ID' : 'en-US';
+
+        if (!azureMapRef.current) {
+          const map = new atlas.Map(mapContainerRef.current, {
+            center,
+            zoom: 15,
+            style: 'satellite_road_labels',
+            view: 'Auto',
+            language,
+            authOptions: {
+              authType: 'subscriptionKey',
+              subscriptionKey: AZURE_KEY
+            }
+          });
+
+          azureMapRef.current = map;
+          map.events.add('ready', () => {
+            if (disposed || !azureMapRef.current) return;
+            azureMapRef.current.resize();
+            azureMarkerRef.current = new atlas.HtmlMarker({
+              position: center,
+              color: '#ef4444'
+            });
+            azureMapRef.current.markers.add(azureMarkerRef.current);
+          });
+          return;
+        }
+
+        azureMapRef.current.setCamera({ center, zoom: 15, style: 'satellite_road_labels' });
+        azureMapRef.current.resize();
+        if (azureMarkerRef.current) {
+          azureMarkerRef.current.setOptions({ position: center });
+        } else {
+          azureMarkerRef.current = new atlas.HtmlMarker({
+            position: center,
+            color: '#ef4444'
+          });
+          azureMapRef.current.markers.add(azureMarkerRef.current);
+        }
+      } catch (error) {
+        console.error('Failed to initialize Azure Map:', error);
+        setAzureMapUnavailable(true);
+      }
+    };
+
+    initializeMap();
+
+    return () => {
+      disposed = true;
+    };
+  }, [selectedAlert, selectedAlertCoordinates, loadAzureMapSdk]);
 
   const formatAlertDateTime = useCallback((alert) => {
     if (!alert) return '-';
@@ -543,6 +691,22 @@ const SCCDashboard = () => {
     if (!Number.isFinite(minutes)) return '-';
     if (minutes >= 60) return `${(minutes / 60).toFixed(1)} hr`;
     return `${minutes.toFixed(1)} min`;
+  }, []);
+
+  const formatDebugTimestamp = useCallback((value) => {
+    if (!value) return '-';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return String(value);
+    return parsed.toLocaleString('id-ID', {
+      timeZone: TIME_ZONE,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
   }, []);
 
   const demoTimeString = useMemo(() => {
@@ -575,40 +739,45 @@ const SCCDashboard = () => {
 
   const highRiskOperators = useMemo(() => {
     if (DEMO_MODE) return [];
-    const unitMap = {};
+    const unitGroups = {};
     filteredAlertsByArea.forEach((alert) => {
       const unitKey = alert.unit || alert.sensorId || 'Unknown Unit';
-      if (!unitMap[unitKey]) {
-        unitMap[unitKey] = {
-          unit: unitKey,
-          operator: alert.operator,
-          events: 0,
-          maxFollowedUpAt: null,
-          maxOpenAt: null,
-          lastSeenAt: null
-        };
+      if (!unitGroups[unitKey]) {
+        unitGroups[unitKey] = [];
       }
-      const entry = unitMap[unitKey];
-      entry.events += alert.count || 1;
-      const ts = getAlertTimestamp(alert);
-      entry.lastSeenAt = Math.max(entry.lastSeenAt ?? 0, ts);
-      if (alert.status === 'Followed Up') {
-        entry.maxFollowedUpAt = Math.max(entry.maxFollowedUpAt ?? 0, ts);
-      }
-      if (alert.status === 'Open') {
-        entry.maxOpenAt = Math.max(entry.maxOpenAt ?? 0, ts);
-      }
+      unitGroups[unitKey].push(alert);
     });
 
-    return Object.values(unitMap)
-      .filter(
-        (entry) =>
-          entry.maxFollowedUpAt &&
-          entry.maxOpenAt &&
-          entry.maxOpenAt > entry.maxFollowedUpAt
-      )
+    return Object.entries(unitGroups)
+      .map(([unit, unitAlerts]) => {
+        const sortedAlerts = [...unitAlerts].sort(
+          (a, b) => getAlertTimestamp(a) - getAlertTimestamp(b)
+        );
+        let recurrenceEventCount = 0;
+        let lastSeenStatus = null;
+
+        sortedAlerts.forEach((alert) => {
+          const status = alert.status || 'Open';
+          // Menghitung transisi dari status 'Followed Up' ke 'Open'
+          if (lastSeenStatus === 'Followed Up' && status === 'Open') {
+            // Menghitung jumlah kejadian berulang (transisi), bukan total event count
+            recurrenceEventCount += 1;
+          }
+          lastSeenStatus = status;
+        });
+
+        const latestAlert = sortedAlerts[sortedAlerts.length - 1] || null;
+        return {
+          unit,
+          name: latestAlert?.operator || 'Unknown Driver',
+          events: recurrenceEventCount,
+          status: latestAlert?.status || 'Unknown',
+          lastSeenAt: latestAlert ? getAlertTimestamp(latestAlert) : 0
+        };
+      })
+      .filter((entry) => entry.status === 'Open' && entry.events > 0)
       .map((entry) => ({
-        name: entry.operator || 'Unknown Driver',
+        name: entry.name,
         unit: entry.unit,
         events: entry.events,
         status: 'Active',
@@ -625,7 +794,9 @@ const SCCDashboard = () => {
   const highFreqZones = useMemo(() => {
     if (DEMO_MODE) return [];
     const zoneMap = {};
-    filteredAlertsByArea.forEach((a) => {
+    filteredAlertsByArea
+      .filter((a) => a.status === 'Open')
+      .forEach((a) => {
       const areaLabel = getAreaLabel(a);
       if (!zoneMap[areaLabel]) {
         zoneMap[areaLabel] = {
@@ -635,32 +806,35 @@ const SCCDashboard = () => {
           lastSeenAt: 0
         };
       }
-      zoneMap[areaLabel].count += 1;
+      zoneMap[areaLabel].count += Number(a.count) || 1;
       zoneMap[areaLabel].lastSeenAt = Math.max(
         zoneMap[areaLabel].lastSeenAt,
         getAlertTimestamp(a)
       );
-    });
+      });
 
     return Object.values(zoneMap).sort((a, b) => {
-      if (highRiskSortOrder === 'oldest') {
-        return a.lastSeenAt - b.lastSeenAt;
-      }
+      if (b.count !== a.count) return b.count - a.count;
       return b.lastSeenAt - a.lastSeenAt;
     });
-  }, [filteredAlertsByArea, getAreaLabel, getAlertTimestamp, highRiskSortOrder]);
+  }, [filteredAlertsByArea, getAreaLabel, getAlertTimestamp]);
 
   const filteredAlerts = useMemo(() => {
     return alerts.filter((alert) => {
+      // When a location is selected from the distribution map, show all its 'Open' alerts, regardless of age.
       if (selectedLocationFilter) {
         const areaLabel = getAreaLabel(alert);
         return areaLabel === selectedLocationFilter && alert.status === 'Open';
       }
+
+      // Default behavior: show only recent open alerts for the selected global area.
+      const timeStr = DEMO_MODE ? demoTimeString : alert.time;
+      const openMinutes = getOpenDurationValue(timeStr);
+      const isRecentOpen = alert.status === 'Open' && openMinutes <= 30;
       const areaMatch = selectedArea === 'All' || alert.area === selectedArea;
-      const statusMatch = alert.status === 'Open';
-      return areaMatch && statusMatch;
+      return areaMatch && isRecentOpen;
     });
-  }, [alerts, selectedArea, selectedLocationFilter, getAreaLabel]);
+  }, [alerts, selectedArea, selectedLocationFilter, getAreaLabel, currentTime, demoTimeString]);
 
   const sortedActiveAlerts = useMemo(() => {
     const copy = [...filteredAlerts];
@@ -743,6 +917,7 @@ const SCCDashboard = () => {
       : null;
     const lastAlert = newestAlert || null;
     const lastStatus = lastAlert?.status || 'Unknown';
+    const lastArea = lastAlert?.area || 'Unknown';
 
     const fatigueCounts = {};
     unitAlerts.forEach((alert) => {
@@ -777,6 +952,7 @@ const SCCDashboard = () => {
 
     return {
       unit: selectedRecurrentUnit,
+      area: lastArea,
       totalEvents,
       lastStatus,
       lastAlert,
@@ -836,8 +1012,44 @@ const SCCDashboard = () => {
     const totalToday = baseData.length;
     const activeOpen = baseData.filter((a) => a.status === 'Open').length;
     const followedUpToday = baseData.filter((a) => a.status === 'Followed Up').length;
-    return { totalToday, followedUpToday, activeOpen };
+    const waitingPercent =
+      totalToday > 0
+        ? Math.round(((totalToday - followedUpToday) / totalToday) * 100)
+        : 0;
+    return { totalToday, followedUpToday, activeOpen, waitingPercent };
   }, [filteredAlertsByArea]);
+
+  const areaFilterDebug = overviewMeta?.areaFilterDebug || null;
+  const areaFilterEntries = useMemo(() => {
+    if (!areaFilterDebug || !Array.isArray(areaFilterDebug.entries)) return [];
+    return areaFilterDebug.entries;
+  }, [areaFilterDebug]);
+  const areaFilterSummary = useMemo(() => {
+    const total = Number(areaFilterDebug?.total) || 0;
+    const kept =
+      Number.isFinite(Number(areaFilterDebug?.kept))
+        ? Number(areaFilterDebug.kept)
+        : areaFilterEntries.filter((entry) => entry?.decision === 'KEPT').length;
+    const dropped =
+      Number.isFinite(Number(areaFilterDebug?.dropped))
+        ? Number(areaFilterDebug.dropped)
+        : Math.max(0, total - kept);
+    const keepRate = total > 0 ? Math.round((kept / total) * 100) : 0;
+    const dropRate = total > 0 ? Math.round((dropped / total) * 100) : 0;
+
+    return { total, kept, dropped, keepRate, dropRate };
+  }, [areaFilterDebug, areaFilterEntries]);
+
+  useEffect(() => {
+    if (!showAreaLogReport) return;
+    if (areaFilterEntries.length === 0) {
+      setSelectedAreaLogEntry(null);
+      return;
+    }
+    if (!selectedAreaLogEntry) {
+      setSelectedAreaLogEntry(areaFilterEntries[0]);
+    }
+  }, [showAreaLogReport, areaFilterEntries, selectedAreaLogEntry]);
 
 
   const handleAreaTabClick = (area) => {
@@ -952,6 +1164,145 @@ const SCCDashboard = () => {
         ))}
       </div>
 
+      {/* --- MODAL AREA FILTER LOG REPORT --- */}
+      {showAreaLogReport && (
+        <div className="fixed inset-0 z-[75] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div
+            className={`w-full max-w-[92vw] h-[86vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col ${
+              darkMode ? 'bg-slate-900 text-white border border-slate-700' : 'bg-slate-100 text-slate-900'
+            }`}
+          >
+            <div className="p-[2vh] border-b border-inherit flex items-start justify-between shrink-0">
+              <div>
+                <h2 className="text-xl lg:text-2xl font-bold">Area Filter Log Report</h2>
+                <p className="text-xs opacity-70 mt-1">
+                  Shift Filter Result (KEPT / DROPPED) • Last Update: {formatDebugTimestamp(areaFilterDebug?.updatedAt)}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowAreaLogReport(false);
+                  setSelectedAreaLogEntry(null);
+                }}
+                className="p-2 hover:bg-slate-700/50 rounded-full transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="p-[2vh] grid grid-cols-2 lg:grid-cols-5 gap-2 shrink-0 border-b border-inherit">
+              <div className={`rounded-lg border p-2 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'}`}>
+                <div className="text-[10px] opacity-60 uppercase">Total</div>
+                <div className="text-xl font-bold font-mono">{areaFilterSummary.total}</div>
+              </div>
+              <div className={`rounded-lg border p-2 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'}`}>
+                <div className="text-[10px] opacity-60 uppercase">Kept</div>
+                <div className="text-xl font-bold font-mono text-emerald-500">{areaFilterSummary.kept}</div>
+              </div>
+              <div className={`rounded-lg border p-2 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'}`}>
+                <div className="text-[10px] opacity-60 uppercase">Dropped</div>
+                <div className="text-xl font-bold font-mono text-red-500">{areaFilterSummary.dropped}</div>
+              </div>
+              <div className={`rounded-lg border p-2 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'}`}>
+                <div className="text-[10px] opacity-60 uppercase">Keep Rate</div>
+                <div className="text-xl font-bold font-mono text-blue-500">{areaFilterSummary.keepRate}%</div>
+              </div>
+              <div className={`rounded-lg border p-2 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'}`}>
+                <div className="text-[10px] opacity-60 uppercase">Drop Rate</div>
+                <div className="text-xl font-bold font-mono text-amber-500">{areaFilterSummary.dropRate}%</div>
+              </div>
+            </div>
+
+            <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[2fr_1fr]">
+              <div className="min-h-0 overflow-auto p-[2vh]">
+                <div className={`rounded-lg border overflow-hidden ${darkMode ? 'border-slate-700' : 'border-slate-300'}`}>
+                  <table className="w-full text-xs">
+                    <thead className={darkMode ? 'bg-slate-800' : 'bg-slate-200'}>
+                      <tr>
+                        <th className="text-left p-2 font-semibold">#</th>
+                        <th className="text-left p-2 font-semibold">Decision</th>
+                        <th className="text-left p-2 font-semibold">Unit</th>
+                        <th className="text-left p-2 font-semibold">Area</th>
+                        <th className="text-left p-2 font-semibold">Time</th>
+                        <th className="text-left p-2 font-semibold">Window</th>
+                        <th className="text-left p-2 font-semibold">Reason</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {areaFilterEntries.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="p-4 text-center opacity-60">
+                            No filter log data available.
+                          </td>
+                        </tr>
+                      ) : (
+                        areaFilterEntries.map((entry, idx) => (
+                          <tr
+                            key={`${entry.unit || 'unit'}-${entry.time || 'time'}-${idx}`}
+                            onClick={() => setSelectedAreaLogEntry(entry)}
+                            className={`cursor-pointer border-t ${darkMode ? 'border-slate-800 hover:bg-slate-800/70' : 'border-slate-200 hover:bg-slate-50'}`}
+                          >
+                            <td className="p-2 font-mono">{idx + 1}</td>
+                            <td className="p-2">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  entry.decision === 'KEPT'
+                                    ? 'bg-emerald-500/20 text-emerald-500'
+                                    : 'bg-red-500/20 text-red-500'
+                                }`}
+                              >
+                                {entry.decision}
+                              </span>
+                            </td>
+                            <td className="p-2 font-semibold">{entry.unit || '-'}</td>
+                            <td className="p-2">{entry.area || '-'}</td>
+                            <td className="p-2 font-mono">{entry.time || '-'}</td>
+                            <td className="p-2 font-mono">{entry.window || '-'}</td>
+                            <td className="p-2">{entry.reason || '-'}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className={`border-t lg:border-t-0 lg:border-l p-[2vh] ${darkMode ? 'border-slate-700 bg-slate-900/50' : 'border-slate-300 bg-slate-50'}`}>
+                <h3 className="text-sm font-bold uppercase tracking-wide mb-2">Detail Log</h3>
+                {selectedAreaLogEntry ? (
+                  <div className="space-y-2 text-xs">
+                    <div className={`rounded-lg border p-2 ${darkMode ? 'border-slate-700 bg-slate-800' : 'border-slate-300 bg-white'}`}>
+                      <div className="opacity-60">Decision</div>
+                      <div className="font-bold mt-1">{selectedAreaLogEntry.decision || '-'}</div>
+                    </div>
+                    <div className={`rounded-lg border p-2 ${darkMode ? 'border-slate-700 bg-slate-800' : 'border-slate-300 bg-white'}`}>
+                      <div className="opacity-60">Unit</div>
+                      <div className="font-bold mt-1">{selectedAreaLogEntry.unit || '-'}</div>
+                    </div>
+                    <div className={`rounded-lg border p-2 ${darkMode ? 'border-slate-700 bg-slate-800' : 'border-slate-300 bg-white'}`}>
+                      <div className="opacity-60">Area</div>
+                      <div className="font-bold mt-1">{selectedAreaLogEntry.area || '-'}</div>
+                    </div>
+                    <div className={`rounded-lg border p-2 ${darkMode ? 'border-slate-700 bg-slate-800' : 'border-slate-300 bg-white'}`}>
+                      <div className="opacity-60">Time & Window</div>
+                      <div className="font-mono mt-1">{selectedAreaLogEntry.time || '-'} | {selectedAreaLogEntry.window || '-'}</div>
+                    </div>
+                    <div className={`rounded-lg border p-2 ${darkMode ? 'border-slate-700 bg-slate-800' : 'border-slate-300 bg-white'}`}>
+                      <div className="opacity-60">Reason</div>
+                      <div className="mt-1">{selectedAreaLogEntry.reason || '-'}</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-xs opacity-60">
+                    Klik salah satu row pada tabel untuk melihat detail log.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* --- MODAL DETAIL HIGH RISK AREA --- */}
       {selectedRiskArea && selectedRiskAreaSummary && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
@@ -967,7 +1318,7 @@ const SCCDashboard = () => {
                     <span className="bg-orange-500 text-white p-1.5 rounded">
                       <MapPin size={28} />
                     </span>
-                    HIGH RISK AREA DETAIL
+                    CONTACT AREA LEADER
                   </h2>
                   <span className="px-3 py-1 bg-orange-100 text-orange-600 rounded-full text-sm font-bold border border-orange-200 uppercase tracking-wider">
                     {selectedRiskAreaSummary.area}
@@ -1107,6 +1458,19 @@ const SCCDashboard = () => {
                   </h2>
                   <span className="px-3 py-1 bg-red-100 text-red-600 rounded-full text-sm font-bold border border-red-200 uppercase tracking-wider">
                     {selectedRecurrentSummary.unit}
+                  </span>
+                  <span
+                    className={`px-3 py-1 rounded-full text-sm font-bold border uppercase tracking-wider ${
+                      selectedRecurrentSummary.area === 'Mining'
+                        ? darkMode
+                          ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                          : 'bg-blue-100 text-blue-600 border-blue-200'
+                        : darkMode
+                          ? 'bg-teal-500/10 text-teal-400 border-teal-500/20'
+                          : 'bg-teal-100 text-teal-600 border-teal-200'
+                    }`}
+                  >
+                    {selectedRecurrentSummary.area}
                   </span>
                 </div>
                 <p className="opacity-70 text-lg lg:text-xl">
@@ -1306,24 +1670,35 @@ const SCCDashboard = () => {
                       darkMode ? 'bg-slate-800' : 'bg-slate-300'
                     }`}
                   >
-                    <div
-                      className="absolute inset-0 opacity-20"
-                      style={{
-                        backgroundImage: `linear-gradient(${darkMode ? '#fff' : '#000'} 1px, transparent 1px), linear-gradient(90deg, ${
-                          darkMode ? '#fff' : '#000'
-                        } 1px, transparent 1px)`,
-                        backgroundSize: '40px 40px'
-                      }}
-                    ></div>
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center group cursor-pointer">
-                      <div className="w-20 h-20 rounded-full bg-red-500/20 animate-ping absolute top-0"></div>
-                      <div className="relative z-10 text-red-600 drop-shadow-xl transform group-hover:-translate-y-2 transition-transform">
-                        <MapPin size={64} fill={darkMode ? '#ef4444' : '#dc2626'} className="text-white" />
+                    {AZURE_KEY && selectedAlertCoordinates && !azureMapUnavailable ? (
+                      <div className="absolute inset-0">
+                        <div ref={mapContainerRef} className="h-full w-full" />
+                        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-slate-900/85 text-white text-xs px-3 py-1 rounded shadow-lg font-bold whitespace-nowrap z-20">
+                          {selectedAlert.location} • {COUNTRY}
+                        </div>
                       </div>
-                      <div className="mt-2 bg-slate-900 text-white text-sm px-3 py-1.5 rounded shadow-lg font-bold whitespace-nowrap z-20">
-                        {selectedAlert.location}
-                      </div>
-                    </div>
+                    ) : (
+                      <>
+                        <div
+                          className="absolute inset-0 opacity-20"
+                          style={{
+                            backgroundImage: `linear-gradient(${darkMode ? '#fff' : '#000'} 1px, transparent 1px), linear-gradient(90deg, ${
+                              darkMode ? '#fff' : '#000'
+                            } 1px, transparent 1px)`,
+                            backgroundSize: '40px 40px'
+                          }}
+                        ></div>
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center group cursor-pointer">
+                          <div className="w-20 h-20 rounded-full bg-red-500/20 animate-ping absolute top-0"></div>
+                          <div className="relative z-10 text-red-600 drop-shadow-xl transform group-hover:-translate-y-2 transition-transform">
+                            <MapPin size={64} fill={darkMode ? '#ef4444' : '#dc2626'} className="text-white" />
+                          </div>
+                          <div className="mt-2 bg-slate-900 text-white text-sm px-3 py-1.5 rounded shadow-lg font-bold whitespace-nowrap z-20">
+                            {selectedAlert.location}
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                   <div
                     className={`p-4 rounded border shrink-0 flex items-center justify-between ${
@@ -1331,11 +1706,14 @@ const SCCDashboard = () => {
                     }`}
                   >
                     <div>
-                      <span className="text-xs opacity-60 block">GPS Coordinates</span>
+                      <span className="text-xs opacity-60 block">Sub Area</span>
                       <span className="font-mono text-base font-medium text-blue-500">
-                        Lat: {formatCoord(selectedAlert.latitude)}, Long: {formatCoord(selectedAlert.longitude)}
+                        {selectedAlert.groupName || selectedAlert.location || '-'}
                       </span>
-                      <div className="text-xs opacity-50 mt-1">Accuracy: ±2m</div>
+                      <div className="text-xs opacity-50 mt-1 flex items-center gap-3">
+                        <span>Accuracy: ±2m</span>
+                        <span>Area: {getAreaLabel(selectedAlert)}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1354,9 +1732,9 @@ const SCCDashboard = () => {
         <div className="flex items-center gap-4">
           <div className="hidden lg:block border-r pr-6 mr-2 border-inherit">
             <img
-              src="https://via.placeholder.com/200x60/334155/ffffff?text=YOUR+LOGO"
+              src="/assets/alamtri-logo.svg"
               alt="Company Logo"
-              className="h-[3.5vh] min-h-[24px] object-contain"
+              className="h-[3.2vh] min-h-[22px] max-h-[36px] w-auto object-contain"
             />
           </div>
           <div className="p-2 bg-red-600 rounded-lg shadow-lg shadow-red-500/30">
@@ -1375,6 +1753,11 @@ const SCCDashboard = () => {
         <div className="flex items-center gap-[2vw]">
 
           <div
+            onDoubleClick={() => {
+              setShowAreaLogReport((prev) => !prev);
+              setSelectedAreaLogEntry(null);
+            }}
+            title="Double click untuk buka Area Filter Log Report"
             className={`hidden md:flex items-center gap-4 px-[1.5vw] py-[0.6vh] rounded-full border ${
               darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300 shadow-sm'
             }`}
@@ -1529,9 +1912,14 @@ const SCCDashboard = () => {
                 <p className="text-[clamp(0.6rem,0.9vh,0.8rem)] uppercase font-bold tracking-wider text-red-500 mb-1">
                   {getAreaTitle()}WAITING FOLLOW UP
                 </p>
-                <h2 className="text-[clamp(2.2rem,3.5vh,3.5rem)] font-black leading-tight text-red-600">
-                  {stats.activeOpen}
-                </h2>
+                <div className="flex items-end gap-2">
+                  <h2 className="text-[clamp(2.2rem,3.5vh,3.5rem)] font-black leading-tight text-red-600">
+                    {stats.activeOpen}
+                  </h2>
+                  <p className="text-[clamp(0.55rem,0.8vh,0.75rem)] font-semibold uppercase tracking-wider text-red-400 mb-1">
+                    {stats.totalToday > 0 ? `${stats.waitingPercent}% of total` : '0% of total'}
+                  </p>
+                </div>
               </div>
               <div className="p-[1vh] rounded-full bg-red-500 text-white animate-pulse z-10">
                 <AlertTriangle className="w-[3vh] h-[3vh]" />
@@ -1769,24 +2157,15 @@ const SCCDashboard = () => {
                 <div className="flex items-center gap-2">
                   <MapPin className="w-[2vh] h-[2vh] text-orange-500" />
                   <h3 className={`text-[clamp(0.7rem,1vh,0.9rem)] font-bold uppercase tracking-wider ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
-                    HIGH RISK AREA
+                    Contact Area Leader
                   </h3>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setHighRiskSortOrder((prev) => (prev === 'newest' ? 'oldest' : 'newest'))
-                    }
-                    disabled={highFreqZones.length <= 1}
-                    className={`text-[9px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded border ${
-                      darkMode
-                        ? 'border-slate-700 text-slate-300 hover:text-white hover:border-slate-500'
-                        : 'border-slate-300 text-slate-600 hover:text-slate-800 hover:border-slate-400'
-                    } ${highFreqZones.length <= 1 ? 'opacity-40 cursor-not-allowed' : ''}`}
-                  >
-                    {highRiskSortOrder === 'newest' ? 'Newest' : 'Oldest'}
-                  </button>
+                  <span className={`text-[9px] font-semibold uppercase tracking-wider ${
+                    darkMode ? 'text-slate-400' : 'text-slate-600'
+                  }`}>
+                    Open Only • Sort by Events
+                  </span>
                   <span className="bg-orange-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-full">
                     {highFreqZones.length} Total
                   </span>
@@ -1886,7 +2265,9 @@ const SCCDashboard = () => {
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-[9px] text-red-500 font-bold uppercase">Open Only</span>
+                <span className="text-[9px] text-red-500 font-bold uppercase">
+                  {selectedLocationFilter ? 'All Open Alerts' : 'Open <= 30 Min'}
+                </span>
                 <button
                   type="button"
                   onClick={() =>
@@ -1926,8 +2307,11 @@ const SCCDashboard = () => {
                         darkMode
                           ? 'bg-slate-800 border-l-4 border-l-red-500 border-y-slate-700 border-r-slate-700 hover:border-slate-500'
                           : 'bg-white border-l-4 border-l-red-500 border-y-slate-200 border-r-slate-200 shadow-sm hover:shadow-md'
+                      } ${
+                        !alert.isWithinShift ? 'opacity-60 grayscale' : ''
                       }`}
                       onClick={() => handleSelectAlert(alert)}
+                      title={!alert.isWithinShift ? 'Event is outside of shift hours and is ignored by statistics.' : ''}
                     >
                       <div className="flex justify-between items-start mb-1">
                         <div className="flex items-center gap-2">
@@ -1936,9 +2320,15 @@ const SCCDashboard = () => {
                           </span>
                           <span className="text-[10px] font-mono text-slate-500">{displayTime}</span>
                         </div>
-                        <span className="text-[9px] text-red-500 font-bold flex items-center gap-1 animate-pulse">
-                          <AlertTriangle size={8} /> ACTIVE
-                        </span>
+                        {alert.isWithinShift ? (
+                          <span className="text-[9px] text-red-500 font-bold flex items-center gap-1 animate-pulse">
+                            <AlertTriangle size={8} /> ACTIVE
+                          </span>
+                        ) : (
+                          <span className="text-[9px] text-slate-500 font-bold flex items-center gap-1">
+                            <EyeOff size={8} /> IGNORED
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 mb-1">
                         <div className={`p-1.5 rounded-lg ${darkMode ? 'bg-slate-700' : 'bg-slate-100'}`}>

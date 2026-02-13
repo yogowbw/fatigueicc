@@ -5,6 +5,30 @@ const randomFrom = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const mockOperators = ['Budi S.', 'Dedi S.', 'Rian J.', 'Doni K.', 'Yanto', 'Agus R.'];
 const mockLocationsMining = ['Manado - Front A', 'Manado - Front B', 'Pit Utara'];
 const mockLocationsHauling = ['KM 10', 'KM 22', 'KM 45', 'KM 55'];
+const MAX_FILTER_DEBUG_ENTRIES = 200;
+
+const areaFilterDebugState = {
+  updatedAt: null,
+  total: 0,
+  kept: 0,
+  dropped: 0,
+  entries: []
+};
+
+const setAreaFilterDebugState = (entries, total, kept) => {
+  areaFilterDebugState.updatedAt = new Date().toISOString();
+  areaFilterDebugState.total = total;
+  areaFilterDebugState.kept = kept;
+  areaFilterDebugState.dropped = Math.max(0, total - kept);
+  areaFilterDebugState.entries = Array.isArray(entries)
+    ? entries.slice(-MAX_FILTER_DEBUG_ENTRIES)
+    : [];
+};
+
+const getAreaFilterDebugState = () => ({
+  ...areaFilterDebugState,
+  entries: [...areaFilterDebugState.entries]
+});
 
 const normalizeReading = (sensorId, data) => {
   const timestamp = data.timestamp || new Date().toISOString();
@@ -136,6 +160,102 @@ const formatDateTimeFixed = (date, timeValue) => {
   return `${formatDateLocal(date)} ${time}`;
 };
 
+const timeToMinutes = (value) => {
+  if (!value) return null;
+  const [hours, minutes, seconds] = String(value)
+    .trim()
+    .split(':')
+    .map((part) => Number(part));
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  const safeSeconds = Number.isFinite(seconds) ? seconds : 0;
+  return hours * 60 + minutes + safeSeconds / 60;
+};
+
+const minutesToClock = (value) => {
+  const minutes = Number(value);
+  if (!Number.isFinite(minutes)) return '00:00:00';
+  const clamped = Math.max(0, Math.min(23 * 60 + 59, Math.floor(minutes)));
+  const hours = Math.floor(clamped / 60);
+  const mins = clamped % 60;
+  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:00`;
+};
+
+const getLocalClockMinutes = (date) => {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: config.timeZone,
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  }).formatToParts(date);
+  const hours = Number(parts.find((item) => item.type === 'hour')?.value);
+  const minutes = Number(parts.find((item) => item.type === 'minute')?.value);
+  const seconds = Number(parts.find((item) => item.type === 'second')?.value);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  return hours * 60 + minutes + (Number.isFinite(seconds) ? seconds : 0) / 60;
+};
+
+const isWithinWindow = (minutes, window) => {
+  if (minutes === null || !window?.start || !window?.end) return true;
+  const start = timeToMinutes(window.start);
+  const end = timeToMinutes(window.end);
+  if (start === null || end === null) return true;
+  if (start <= end) {
+    return minutes >= start && minutes <= end;
+  }
+  return minutes >= start || minutes <= end;
+};
+
+const getAreaWindowEnvelope = () => {
+  const windows = Object.values(config.areaWindows || {});
+  const starts = [];
+  const ends = [];
+
+  windows.forEach((window) => {
+    const start = timeToMinutes(window?.start);
+    const end = timeToMinutes(window?.end);
+    if (start === null || end === null) return;
+    starts.push(start);
+    ends.push(end);
+  });
+
+  if (starts.length === 0 || ends.length === 0) {
+    return null;
+  }
+
+  return {
+    start: Math.min(...starts),
+    end: Math.max(...ends)
+  };
+};
+
+const getEventLocalMinutes = (event) => {
+  // Prioritize `time` or `device_time` as they seem to represent the local event time,
+  // which is what the area window filter expects. `server_time` is often in UTC and
+  // should be used as a fallback.
+  const timestamp =
+    event?.time ||
+    event?.device_time ||
+    event?.server_time ||
+    event?.upload_at ||
+    event?.created_at;
+  if (!timestamp) return null;
+
+  const fromText = String(timestamp).match(/(\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (fromText) {
+    const hours = Number(fromText[1]);
+    const minutes = Number(fromText[2]);
+    const seconds = Number(fromText[3] || 0);
+    if (Number.isFinite(hours) && Number.isFinite(minutes)) {
+      return hours * 60 + minutes + (Number.isFinite(seconds) ? seconds : 0) / 60;
+    }
+  }
+
+  const parsed = new Date(timestamp);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return getLocalClockMinutes(parsed);
+};
+
 const resolveRangeEnd = (date) => {
   if (config.integrator.rangeEndMode === 'end_of_day') {
     return formatDateTimeFixed(date, '23:59:59');
@@ -147,14 +267,28 @@ const resolveRangeEnd = (date) => {
 };
 
 const buildIntegratorPayload = (page = 1) => {
-  const today = formatDateLocal(new Date());
-  const rangeStart = `${today} ${config.integrator.rangeStartTime || '00:00:00'}`;
-  const rangeEnd = resolveRangeEnd(new Date());
+  const now = new Date();
+  const today = formatDateLocal(now);
+  const envelope = getAreaWindowEnvelope();
+  const rangeStartTime = envelope
+    ? minutesToClock(envelope.start)
+    : config.integrator.rangeStartTime || '00:00:00';
+  const rangeStart = `${today} ${rangeStartTime}`;
+
+  let rangeEnd = resolveRangeEnd(now);
+  if (envelope) {
+    const localNowMinutes = getLocalClockMinutes(now);
+    const cappedEnd = Number.isFinite(localNowMinutes)
+      ? Math.min(localNowMinutes, envelope.end)
+      : envelope.end;
+    const safeEnd = Math.max(envelope.start, cappedEnd);
+    rangeEnd = `${today} ${minutesToClock(safeEnd)}`;
+  }
 
   const payload = {
     range_date_start: rangeStart,
     range_date_end: rangeEnd,
-    range_date_columns: config.integrator.rangeDateColumn,
+    range_date_columns: 'device_time',
     page,
     page_size: config.integrator.pageSize
   };
@@ -189,8 +323,16 @@ const startsWithAny = (value, prefixes) => {
   return prefixes.some((prefix) => normalized.startsWith(normalizeText(prefix)));
 };
 
+const normalizeArea = (area) => {
+  const normalized = normalizeText(area).trim();
+  if (normalized === 'hauling') return 'Hauling';
+  if (normalized === 'mining') return 'Mining';
+  return area || config.defaultArea;
+};
+
 const inferAreaFromEvent = (event, device) => {
-  if (event?.area) return event.area;
+  if (event?._resolvedArea) return event._resolvedArea;
+  if (event?.area) return normalizeArea(event.area);
 
   const groupName = device?.group_name || '';
   if (matchesAnyKeyword(groupName, config.areaMapping.haulingGroupKeywords)) {
@@ -200,6 +342,16 @@ const inferAreaFromEvent = (event, device) => {
     return 'Mining';
   }
 
+  // Priority 3: Check for location/geofence name prefixes
+  const locationName = event?.geofence?.name || '';
+  if (startsWithAny(locationName, config.areaMapping.haulingLocationPrefixes)) {
+    return 'Hauling';
+  }
+  if (startsWithAny(locationName, config.areaMapping.miningLocationPrefixes)) {
+    return 'Mining';
+  }
+
+  // Priority 4: Check for unit name prefixes
   const unit = device?.name || event?.device_id || '';
   if (startsWithAny(unit, config.areaMapping.haulingUnitPrefixes)) {
     return 'Hauling';
@@ -208,7 +360,50 @@ const inferAreaFromEvent = (event, device) => {
     return 'Mining';
   }
 
-  return config.defaultArea;
+  // Priority 5: Fallback to default
+  return normalizeArea(config.defaultArea);
+};
+
+const isEventWithinAreaWindow = (event) => {
+  const area = inferAreaFromEvent(event, event?.device || {});
+  const window = config.areaWindows?.[area];
+  const minutes = getEventLocalMinutes(event);
+  const result = isWithinWindow(minutes, window);
+
+  if (config.debugIntegrator) {
+    const timeStr = event?.time || event?.device_time || event?.server_time || 'N/A';
+    const unitId = event?.device?.name || event?.device_id || 'Unknown';
+    const decision = result ? 'KEPT' : 'DROPPED';
+    const reason = result
+      ? 'within shift'
+      : `outside ${area} shift (${window?.start}-${window?.end})`;
+
+    console.log(
+      `[filter-check] ${decision} | Unit: ${unitId}, Time: ${timeStr}, Reason: ${reason}`
+    );
+  }
+
+  return result;
+};
+
+const buildFilterDebugEntry = (event) => {
+  const area = inferAreaFromEvent(event, event?.device || {});
+  const window = config.areaWindows?.[area];
+  const minutes = getEventLocalMinutes(event);
+  const kept = isWithinWindow(minutes, window);
+  const timeStr = event?.time || event?.device_time || event?.server_time || 'N/A';
+  const unitId = event?.device?.name || event?.device_id || 'Unknown';
+
+  return {
+    decision: kept ? 'KEPT' : 'DROPPED',
+    unit: unitId,
+    time: timeStr,
+    area,
+    window: window ? `${window.start}-${window.end}` : null,
+    reason: kept
+      ? 'within shift'
+      : `outside ${area} shift (${window?.start}-${window?.end})`
+  };
 };
 
 const resolveLoginUrl = () => {
@@ -302,6 +497,10 @@ const mapIntegratorEventToReading = (event) => {
   const speed = Number.isFinite(Number(event.speed)) ? Number(event.speed) : null;
   const timestamp = event.server_time || event.upload_at || event.time;
   const area = inferAreaFromEvent(event, device);
+  const isWithinShift =
+    typeof event?._isWithinShift === 'boolean'
+      ? event._isWithinShift
+      : isEventWithinAreaWindow(event);
   const driverName =
     event.driver?.name || event.driver_name || event.driverName || null;
 
@@ -345,7 +544,8 @@ const mapIntegratorEventToReading = (event) => {
       deviceId: event.device_id,
       latitude: event.latitude,
       longitude: event.longitude,
-      photoUrl: photoFile?.downUrl
+      photoUrl: photoFile?.downUrl,
+      isWithinShift
     }
   });
 };
@@ -359,6 +559,218 @@ const resolveDevicesUrl = () => {
   } catch (error) {
     return '';
   }
+};
+
+const resolveDevicesGroupedUrl = () => {
+  if (config.integrator.devicesGroupedUrl) return config.integrator.devicesGroupedUrl;
+  if (!config.integrator.baseUrl) return '';
+  try {
+    const base = new URL(config.integrator.baseUrl);
+    return new URL('/api/v1/devices-grouped', base).toString();
+  } catch (error) {
+    return '';
+  }
+};
+
+const ensureArray = (value) => {
+  if (Array.isArray(value)) return value;
+  if (!value || typeof value !== 'object') return [];
+  if (Array.isArray(value.list)) return value.list;
+  if (Array.isArray(value.data)) return value.data;
+  if (value.data && Array.isArray(value.data.list)) return value.data.list;
+  return [];
+};
+
+const extractHierarchyText = (item) => {
+  if (!item || typeof item !== 'object') return '';
+  const values = [
+    item.structure_hierarchy,
+    item.structureHierarchy,
+    item.STRUCTURE_HIERARCHY,
+    item.root_group,
+    item.rootGroup,
+    item.ROOT_GROUP,
+    item.hierarchy,
+    item.group_name,
+    item.groupName
+  ];
+
+  return values
+    .filter((value) => value !== undefined && value !== null)
+    .map((value) => String(value))
+    .join(' | ');
+};
+
+const inferAreaFromHierarchy = (hierarchyText) => {
+  const normalized = normalizeText(hierarchyText).trim();
+  if (!normalized) return null;
+  if (normalized.includes('hauling')) return 'Hauling';
+  if (normalized.includes('mining')) return 'Mining';
+  return null;
+};
+
+const getNodeId = (item) =>
+  String(item?.id || item?.device_id || item?.group_id || '').trim();
+
+const getNodeParentId = (item) =>
+  String(item?.parent_id || item?.parentId || '').trim();
+
+const getNodeImei = (item) =>
+  String(item?.imei || item?.device_imei || item?.deviceImei || '').trim();
+
+const indexGroupedNodes = (nodes, nodeCache) => {
+  nodes.forEach((node) => {
+    const nodeId = getNodeId(node);
+    if (nodeId) nodeCache.set(nodeId, node);
+  });
+};
+
+const selectDeviceNodeByImei = (imei, groupedItems) => {
+  const exact = groupedItems.find(
+    (item) => getNodeImei(item) && getNodeImei(item) === imei
+  );
+  if (exact) return exact;
+
+  // Fallback for APIs that return a hierarchy set without explicit imei on all nodes.
+  return groupedItems.find((item) => {
+    const text = extractHierarchyText(item);
+    return text && text.includes(imei);
+  }) || null;
+};
+
+const findAreaFromNode = (node) =>
+  inferAreaFromHierarchy(
+    [
+      extractHierarchyText(node),
+      node?.name,
+      node?.group_name,
+      node?.groupName
+    ]
+      .filter(Boolean)
+      .join(' | ')
+  );
+
+const fetchNodeById = async (nodeId, headers, nodeCache) => {
+  if (!nodeId) return null;
+  if (nodeCache.has(nodeId)) return nodeCache.get(nodeId);
+
+  const groupedItems = await fetchDevicesGroupedBySearch(nodeId, headers);
+  if (!groupedItems.length) return null;
+
+  indexGroupedNodes(groupedItems, nodeCache);
+
+  const exact = groupedItems.find((item) => getNodeId(item) === nodeId);
+  if (exact) return exact;
+  if (nodeCache.has(nodeId)) return nodeCache.get(nodeId);
+  return groupedItems[0] || null;
+};
+
+const resolveAreaByImei = async (imei, headers, nodeCache) => {
+  if (!imei) return null;
+
+  const groupedItems = await fetchDevicesGroupedBySearch(imei, headers);
+  if (!groupedItems.length) return null;
+  indexGroupedNodes(groupedItems, nodeCache);
+
+  const startNode = selectDeviceNodeByImei(imei, groupedItems);
+  if (!startNode) return null;
+
+  let currentNode = startNode;
+  let guard = 0;
+
+  while (currentNode && guard < 25) {
+    guard += 1;
+
+    const area = findAreaFromNode(currentNode);
+    if (area) return area;
+
+    const parentId = getNodeParentId(currentNode);
+    if (!parentId) break;
+
+    currentNode = await fetchNodeById(parentId, headers, nodeCache);
+  }
+
+  return null;
+};
+
+const fetchDevicesGroupedBySearch = async (searchTerm, headers) => {
+  const devicesGroupedUrl = resolveDevicesGroupedUrl();
+  if (!devicesGroupedUrl) return [];
+
+  const url = new URL(devicesGroupedUrl);
+  url.searchParams.set('search', String(searchTerm || '').trim());
+
+  let responseMeta;
+  try {
+    responseMeta = await fetchWithTimeout(
+      url.toString(),
+      config.sensorApiTimeoutMs,
+      {
+        method: 'GET',
+        headers,
+        returnResponseMeta: true
+      }
+    );
+  } catch (error) {
+    if (
+      error.status === 401 &&
+      (config.integrator.authMode === 'login' ||
+        config.integrator.authMode === 'auto')
+    ) {
+      await loginIntegrator();
+      const retryHeaders = await buildIntegratorHeaders();
+      responseMeta = await fetchWithTimeout(
+        url.toString(),
+        config.sensorApiTimeoutMs,
+        {
+          method: 'GET',
+          headers: retryHeaders,
+          returnResponseMeta: true
+        }
+      );
+    } else {
+      throw error;
+    }
+  }
+
+  const data = responseMeta?.data;
+  if (!data || data.success === false) {
+    return [];
+  }
+
+  return ensureArray(data?.data || data);
+};
+
+const resolveImeiFromEvent = (event) =>
+  String(
+    event?.device?.imei ||
+      event?.imei ||
+      event?.device_imei ||
+      event?.device_id ||
+      ''
+  ).trim();
+
+const buildAreaLookupByImei = async (events, headers) => {
+  const imeis = Array.from(
+    new Set(events.map(resolveImeiFromEvent).filter(Boolean))
+  );
+  if (imeis.length === 0) {
+    return new Map();
+  }
+
+  const lookup = new Map();
+  const nodeCache = new Map();
+
+  for (const imei of imeis) {
+    try {
+      const area = await resolveAreaByImei(imei, headers, nodeCache);
+      lookup.set(imei, area || null);
+    } catch (error) {
+      lookup.set(imei, null);
+    }
+  }
+
+  return lookup;
 };
 
 const buildIntegratorHeaders = async () => {
@@ -526,7 +938,33 @@ const fetchIntegratorEvents = async () => {
     }
   }
 
-  return list.map(mapIntegratorEventToReading);
+  const areaLookup = await buildAreaLookupByImei(list, headers);
+  const eventsWithResolvedArea = list.map((event) => {
+    const imei = resolveImeiFromEvent(event);
+    const resolvedArea = imei ? areaLookup.get(imei) : null;
+    if (!resolvedArea) return event;
+    return { ...event, _resolvedArea: resolvedArea };
+  });
+
+  const filterEntries = eventsWithResolvedArea.map(buildFilterDebugEntry);
+  const filteredList = eventsWithResolvedArea.filter((event, index) => {
+    const kept = filterEntries[index]?.decision === 'KEPT';
+    if (kept) {
+      event._isWithinShift = true;
+    }
+    return kept;
+  });
+  setAreaFilterDebugState(
+    filterEntries,
+    eventsWithResolvedArea.length,
+    filteredList.length
+  );
+  logIntegratorDebug('Area window filter', {
+    total: eventsWithResolvedArea.length,
+    kept: filteredList.length
+  });
+
+  return filteredList.map(mapIntegratorEventToReading);
 };
 
 const fetchDevicesAll = async () => {
@@ -640,4 +1078,9 @@ const fetchAllSensors = async (sensorIds) => {
     .map((result) => result.value);
 };
 
-module.exports = { fetchSensor, fetchAllSensors, fetchDevicesAll };
+module.exports = {
+  fetchSensor,
+  fetchAllSensors,
+  fetchDevicesAll,
+  getAreaFilterDebugState
+};

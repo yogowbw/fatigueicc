@@ -2,27 +2,28 @@ const { config } = require('../config/env');
 const { sql, getPool } = require('../db/sqlServer');
 const { QUERY_SENSOR_HISTORY, QUERY_LAST_READING } = require('../db/queries');
 const { deviceHealthCache } = require('../cache/deviceHealthCache');
+const { getAreaFilterDebugState } = require('./sensorApiClient');
 
-const formatTimeLocal = (isoString) => {
-  const date = isoString ? new Date(isoString) : new Date();
-  return new Intl.DateTimeFormat('en-GB', {
-    timeZone: config.timeZone,
-    hour12: false,
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  }).format(date);
-};
+const timeFormatter = new Intl.DateTimeFormat('en-GB', {
+  timeZone: config.timeZone,
+  hour12: false,
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit'
+});
 
-const formatDateLocal = (isoString) => {
-  const date = isoString ? new Date(isoString) : new Date();
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: config.timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(date);
-};
+const dateFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: config.timeZone,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit'
+});
+
+const formatTimeLocal = (isoString) =>
+  timeFormatter.format(isoString ? new Date(isoString) : new Date());
+
+const formatDateLocal = (isoString) =>
+  dateFormatter.format(isoString ? new Date(isoString) : new Date());
 
 const getTodayLocal = () => formatDateLocal();
 
@@ -53,52 +54,50 @@ const getAlertLocalMinutes = (alert) => {
     return timeToMinutes(alert.time);
   }
   if (alert?.timestamp) {
-    const parts = new Intl.DateTimeFormat('en-GB', {
-      timeZone: config.timeZone,
-      hour12: false,
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    }).formatToParts(new Date(alert.timestamp));
-    const hours = Number(parts.find((p) => p.type === 'hour')?.value);
-    const minutes = Number(parts.find((p) => p.type === 'minute')?.value);
-    const seconds = Number(parts.find((p) => p.type === 'second')?.value);
+    const timeString = formatTimeLocal(alert.timestamp);
+    const [hours, minutes, seconds] = timeString
+      .split(':')
+      .map((part) => Number(part));
     if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
     return hours * 60 + minutes + (Number.isFinite(seconds) ? seconds : 0) / 60;
   }
   return null;
 };
 
-const isWithinWindow = (minutes, window) => {
-  if (minutes === null || !window?.start || !window?.end) return true;
-  const start = timeToMinutes(window.start);
-  const end = timeToMinutes(window.end);
-  if (start === null || end === null) return true;
-  if (start <= end) {
-    return minutes >= start && minutes <= end;
-  }
-  return minutes >= start || minutes <= end;
-};
-
-const filterAlertsByAreaWindow = (alerts) => {
-  return alerts.filter((alert) => {
-    const window = config.areaWindows?.[alert.area];
-    const minutes = getAlertLocalMinutes(alert);
-    return isWithinWindow(minutes, window);
-  });
+const normalizeArea = (area) => {
+  const normalized = String(area || '')
+    .trim()
+    .toLowerCase();
+  if (normalized === 'hauling') return 'Hauling';
+  if (normalized === 'mining') return 'Mining';
+  return area || 'Mining';
 };
 
 const inferArea = (sensorId, meta) => {
-  if (meta && meta.area) return meta.area;
+  if (meta && meta.area) return normalizeArea(meta.area);
   if (!sensorId) return 'Mining';
-  return sensorId.startsWith('HD') || sensorId.startsWith('WT') ? 'Hauling' : 'Mining';
+
+  // Use prefixes from config as described in README.md
+  if (
+    config.haulingUnitPrefixes?.some((prefix) => sensorId.startsWith(prefix))
+  ) {
+    return 'Hauling';
+  }
+  if (config.miningUnitPrefixes?.some((prefix) => sensorId.startsWith(prefix))) {
+    return 'Mining';
+  }
+
+  return 'Mining'; // Default fallback
 };
 
 const toAlert = (reading) => {
   const meta = reading.meta || {};
   const area = inferArea(reading.sensorId, meta);
   const location =
-    meta.location || (area === 'Mining' ? 'Manado - Front A' : 'KM 10');
+    meta.location ||
+    (area === 'Mining'
+      ? config.defaultMiningLocation
+      : config.defaultHaulingLocation);
   const speed =
     meta.speed ||
     `${Math.max(0, Math.round(Number(reading.value) || 0))} km/h`;
@@ -129,6 +128,7 @@ const toAlert = (reading) => {
     status: alertStatus,
     speed,
     count: meta.count || 1,
+    isWithinShift: meta.isWithinShift,
     timestamp: reading.timestamp,
     sensorId: reading.sensorId
   };
@@ -266,8 +266,9 @@ const computeOverdueAlerts = (alerts, now) => {
     if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return false;
     const eventTime = new Date(current);
     eventTime.setHours(hours, minutes, seconds || 0, 0);
+    const overdueMinutes = config.alertOverdueMinutes || 30;
     const diffMinutes = Math.floor((current - eventTime) / 60000);
-    return diffMinutes > 30;
+    return diffMinutes > overdueMinutes;
   });
 };
 
@@ -276,6 +277,7 @@ const parseMeta = (metaValue) => {
   try {
     return typeof metaValue === 'string' ? JSON.parse(metaValue) : metaValue;
   } catch (error) {
+    console.error(`[dashboardService] Failed to parse meta JSON: "${metaValue}"`, error);
     return {};
   }
 };
@@ -325,8 +327,24 @@ const createDashboardService = ({ cache, eventCache, pollingStatus }) => {
     const snapshot = cache.getSnapshot();
     const sensors = snapshot.sensors;
     const eventReadings = eventCache ? eventCache.getAll() : sensors;
-    const alerts = eventReadings.map(toAlert);
-    const metricsAlerts = filterAlertsByAreaWindow(alerts);
+    // The area window filtering is already handled in sensorApiClient.js
+    // when fetching from the integrator. Removing the redundant filter here
+    // simplifies the logic and prevents filtering data from non-integrator sources.
+    const metricsAlerts = eventReadings.map(toAlert);
+
+    // Start with default/fallback health
+    let deviceHealth = resolveDeviceHealth(sensors);
+    // If integrator mode, get cached health from device polling
+    if (config.deviceHealthMode === 'integrator' && deviceHealthCache.get()) {
+      // Per user request:
+      // 'online' & 'offline' are from the devices-all endpoint.
+      // 'total' is the count of events from the events endpoint.
+      deviceHealth = {
+        ...deviceHealthCache.get(),
+        total: metricsAlerts.length
+      };
+    }
+
     const now = new Date();
 
     return {
@@ -335,14 +353,12 @@ const createDashboardService = ({ cache, eventCache, pollingStatus }) => {
         serverDate: getTodayLocal(),
         refreshMs: config.sensorPollIntervalMs,
         polling: pollingStatus ? pollingStatus() : null,
-        eventCount: eventReadings.length
+        eventCount: eventReadings.length,
+        areaFilterDebug: getAreaFilterDebugState()
       },
-      deviceHealth:
-        config.deviceHealthMode === 'integrator' && deviceHealthCache.get()
-          ? deviceHealthCache.get()
-          : resolveDeviceHealth(sensors),
+      deviceHealth,
       sensors,
-      alerts,
+      alerts: metricsAlerts,
       stats: computeStats(metricsAlerts),
       areaSummary: computeAreaSummary(metricsAlerts),
       locationStats: computeLocationStats(metricsAlerts),
