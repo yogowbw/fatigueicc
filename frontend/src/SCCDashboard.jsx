@@ -60,6 +60,8 @@ const SCCDashboard = () => {
   const [overviewMeta, setOverviewMeta] = useState(null);
   const [showAreaLogReport, setShowAreaLogReport] = useState(false);
   const [selectedAreaLogEntry, setSelectedAreaLogEntry] = useState(null);
+  const [decisionSortOrder, setDecisionSortOrder] = useState('asc');
+  const [isSwitchingMode, setIsSwitchingMode] = useState(false);
   const [deviceHealth, setDeviceHealth] = useState({
     total: 0,
     online: 0,
@@ -74,6 +76,7 @@ const SCCDashboard = () => {
   const azureMapRef = useRef(null);
   const azureMarkerRef = useRef(null);
   const [azureMapUnavailable, setAzureMapUnavailable] = useState(false);
+  const currentApiMode = overviewMeta?.currentApiMode || 'unknown';
   const getStoredScale = () => {
     if (typeof window === 'undefined') return null;
     const raw = window.localStorage.getItem(UI_SCALE_STORAGE_KEY);
@@ -120,7 +123,7 @@ const SCCDashboard = () => {
         setShowScaleControls(false);
         return;
       }
-      if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 's') {
+      if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'm') {
         setShowScaleControls((prev) => !prev);
         return;
       }
@@ -176,6 +179,45 @@ const SCCDashboard = () => {
   const removeNotification = useCallback((id) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
   }, []);
+
+  const switchSensorApiMode = useCallback(
+    async (mode) => {
+      if (!mode || !['real', 'mock'].includes(mode)) return;
+      if (DEMO_MODE) return;
+      if (isSwitchingMode) return;
+
+      setIsSwitchingMode(true);
+      try {
+        const response = await fetch(buildApiUrl('/api/config/mode'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode })
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const nextMeta = { ...(overviewMeta || {}), currentApiMode: mode };
+        setOverviewMeta(nextMeta);
+        addNotification(
+          'Mode Changed',
+          `Sensor API mode switched to ${mode.toUpperCase()}.`,
+          'critical'
+        );
+
+        if (fetchOverviewRef.current) {
+          fetchOverviewRef.current();
+        }
+      } catch (error) {
+        addNotification('Mode Switch Failed', 'Gagal mengubah mode API.');
+        console.error('Switch mode error:', error);
+      } finally {
+        setIsSwitchingMode(false);
+      }
+    },
+    [DEMO_MODE, addNotification, isSwitchingMode, overviewMeta]
+  );
 
   const playAlarm = useCallback(() => {
     try {
@@ -1040,16 +1082,30 @@ const SCCDashboard = () => {
     return { total, kept, dropped, keepRate, dropRate };
   }, [areaFilterDebug, areaFilterEntries]);
 
+  const sortedAreaFilterEntries = useMemo(() => {
+    const rows = [...areaFilterEntries];
+    rows.sort((a, b) => {
+      const aDecision = String(a?.decision || '');
+      const bDecision = String(b?.decision || '');
+      if (aDecision === bDecision) return 0;
+      if (decisionSortOrder === 'asc') {
+        return aDecision.localeCompare(bDecision);
+      }
+      return bDecision.localeCompare(aDecision);
+    });
+    return rows;
+  }, [areaFilterEntries, decisionSortOrder]);
+
   useEffect(() => {
     if (!showAreaLogReport) return;
-    if (areaFilterEntries.length === 0) {
+    if (sortedAreaFilterEntries.length === 0) {
       setSelectedAreaLogEntry(null);
       return;
     }
     if (!selectedAreaLogEntry) {
-      setSelectedAreaLogEntry(areaFilterEntries[0]);
+      setSelectedAreaLogEntry(sortedAreaFilterEntries[0]);
     }
-  }, [showAreaLogReport, areaFilterEntries, selectedAreaLogEntry]);
+  }, [showAreaLogReport, sortedAreaFilterEntries, selectedAreaLogEntry]);
 
 
   const handleAreaTabClick = (area) => {
@@ -1220,7 +1276,21 @@ const SCCDashboard = () => {
                     <thead className={darkMode ? 'bg-slate-800' : 'bg-slate-200'}>
                       <tr>
                         <th className="text-left p-2 font-semibold">#</th>
-                        <th className="text-left p-2 font-semibold">Decision</th>
+                        <th className="text-left p-2 font-semibold">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setDecisionSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+                            }
+                            className="inline-flex items-center gap-1 hover:opacity-80"
+                            title="Sort by Decision"
+                          >
+                            Decision
+                            <span className="font-mono text-[10px]">
+                              {decisionSortOrder === 'asc' ? 'A-Z' : 'Z-A'}
+                            </span>
+                          </button>
+                        </th>
                         <th className="text-left p-2 font-semibold">Unit</th>
                         <th className="text-left p-2 font-semibold">Area</th>
                         <th className="text-left p-2 font-semibold">Time</th>
@@ -1229,14 +1299,14 @@ const SCCDashboard = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {areaFilterEntries.length === 0 ? (
+                      {sortedAreaFilterEntries.length === 0 ? (
                         <tr>
                           <td colSpan={7} className="p-4 text-center opacity-60">
                             No filter log data available.
                           </td>
                         </tr>
                       ) : (
-                        areaFilterEntries.map((entry, idx) => (
+                        sortedAreaFilterEntries.map((entry, idx) => (
                           <tr
                             key={`${entry.unit || 'unit'}-${entry.time || 'time'}-${idx}`}
                             onClick={() => setSelectedAreaLogEntry(entry)}
@@ -1712,7 +1782,6 @@ const SCCDashboard = () => {
                       </span>
                       <div className="text-xs opacity-50 mt-1 flex items-center gap-3">
                         <span>Accuracy: ±2m</span>
-                        <span>Area: {getAreaLabel(selectedAlert)}</span>
                       </div>
                     </div>
                   </div>
@@ -1729,12 +1798,16 @@ const SCCDashboard = () => {
           darkMode ? 'border-slate-700 bg-slate-900' : 'border-slate-300 bg-slate-100'
         }`}
       >
-        <div className="flex items-center gap-4">
-          <div className="hidden lg:block border-r pr-6 mr-2 border-inherit">
+        <div
+          onDoubleClick={() => setShowScaleControls((prev) => !prev)}
+          title="Double click untuk buka hidden menu"
+          className="flex items-center gap-4"
+        >
+          <div className="pr-4 lg:border-r lg:pr-6 lg:mr-2 border-inherit">
             <img
-              src="/assets/alamtri-logo.svg"
+              src="/assets/alamtri logo company.png"
               alt="Company Logo"
-              className="h-[3.2vh] min-h-[22px] max-h-[36px] w-auto object-contain"
+              className="h-[5.5vh] min-h-[38px] max-h-[56px] w-auto object-contain"
             />
           </div>
           <div className="p-2 bg-red-600 rounded-lg shadow-lg shadow-red-500/30">
@@ -1842,6 +1915,55 @@ const SCCDashboard = () => {
                 >
                   Auto
                 </button>
+                <div className={`mt-2 pt-2 border-t ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+                  <div className="text-[10px] font-semibold uppercase tracking-wider opacity-70">
+                    Sensor API Mode
+                  </div>
+                  <div className="mt-1 text-[10px]">
+                    Status:{' '}
+                    <span className="font-bold uppercase">
+                      {String(currentApiMode || 'unknown')}
+                    </span>
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-1">
+                    <button
+                      type="button"
+                      onClick={() => switchSensorApiMode('real')}
+                      disabled={DEMO_MODE || isSwitchingMode || currentApiMode === 'real'}
+                      className={`h-7 rounded text-[10px] font-bold uppercase ${
+                        currentApiMode === 'real'
+                          ? 'bg-emerald-600 text-white'
+                          : darkMode
+                            ? 'bg-slate-800 text-white'
+                            : 'bg-slate-200 text-slate-700'
+                      } ${
+                        DEMO_MODE || isSwitchingMode || currentApiMode === 'real'
+                          ? 'opacity-50 cursor-not-allowed'
+                          : 'hover:opacity-90'
+                      }`}
+                    >
+                      Real
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => switchSensorApiMode('mock')}
+                      disabled={DEMO_MODE || isSwitchingMode || currentApiMode === 'mock'}
+                      className={`h-7 rounded text-[10px] font-bold uppercase ${
+                        currentApiMode === 'mock'
+                          ? 'bg-amber-500 text-slate-900'
+                          : darkMode
+                            ? 'bg-slate-800 text-white'
+                            : 'bg-slate-200 text-slate-700'
+                      } ${
+                        DEMO_MODE || isSwitchingMode || currentApiMode === 'mock'
+                          ? 'opacity-50 cursor-not-allowed'
+                          : 'hover:opacity-90'
+                      }`}
+                    >
+                      Mock
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -2372,3 +2494,4 @@ const SCCDashboard = () => {
 };
 
 export default SCCDashboard;
+
