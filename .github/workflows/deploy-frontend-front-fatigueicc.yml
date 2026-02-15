@@ -51,11 +51,14 @@ jobs:
           cp -r dist/* ../frontend-release/
           cat > ../frontend-release/server.js << 'EOF'
           const http = require('http');
+          const https = require('https');
           const fs = require('fs');
           const path = require('path');
+          const { URL } = require('url');
 
           const port = process.env.PORT || 8080;
           const root = __dirname;
+          const apiProxyTarget = process.env.API_PROXY_TARGET || 'https://fatigueicc.azurewebsites.net';
           const mimeTypes = {
             '.html': 'text/html; charset=utf-8',
             '.js': 'application/javascript; charset=utf-8',
@@ -74,6 +77,46 @@ jobs:
             '.map': 'application/json; charset=utf-8'
           };
 
+          const proxyApiRequest = (req, res) => {
+            let targetUrl;
+            try {
+              targetUrl = new URL(req.url, apiProxyTarget);
+            } catch (error) {
+              res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+              res.end(JSON.stringify({ error: 'Invalid API proxy target' }));
+              return;
+            }
+
+            const transport = targetUrl.protocol === 'https:' ? https : http;
+            const headers = { ...req.headers, host: targetUrl.host };
+
+            const proxyReq = transport.request(
+              {
+                protocol: targetUrl.protocol,
+                hostname: targetUrl.hostname,
+                port: targetUrl.port || (targetUrl.protocol === 'https:' ? 443 : 80),
+                method: req.method,
+                path: `${targetUrl.pathname}${targetUrl.search}`,
+                headers
+              },
+              (proxyRes) => {
+                res.writeHead(proxyRes.statusCode || 502, proxyRes.headers);
+                proxyRes.pipe(res, { end: true });
+              }
+            );
+
+            proxyReq.on('error', () => {
+              res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
+              res.end(JSON.stringify({ error: 'Failed to reach backend API' }));
+            });
+
+            if (req.method === 'GET' || req.method === 'HEAD') {
+              proxyReq.end();
+              return;
+            }
+            req.pipe(proxyReq, { end: true });
+          };
+
           const sendFile = (res, filePath) => {
             fs.readFile(filePath, (err, data) => {
               if (err) {
@@ -89,7 +132,20 @@ jobs:
           };
 
           const server = http.createServer((req, res) => {
-            const cleanPath = (req.url || '/').split('?')[0];
+            const rawPath = (req.url || '/').split('?')[0];
+            const cleanPath = (() => {
+              try {
+                return decodeURIComponent(rawPath);
+              } catch {
+                return rawPath;
+              }
+            })();
+
+            if (cleanPath.startsWith('/api/')) {
+              proxyApiRequest(req, res);
+              return;
+            }
+
             const requestedPath = cleanPath === '/' ? '/index.html' : cleanPath;
             const filePath = path.join(root, requestedPath);
 
