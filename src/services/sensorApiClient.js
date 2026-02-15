@@ -1,4 +1,5 @@
 const { config } = require('../config/env');
+const { getSensorApiMode } = require('../config/runtimeState');
 
 const randomFrom = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
@@ -331,7 +332,6 @@ const normalizeArea = (area) => {
 };
 
 const inferAreaFromEvent = (event, device) => {
-  if (event?._resolvedArea) return event._resolvedArea;
   if (event?.area) return normalizeArea(event.area);
 
   const groupName = device?.group_name || '';
@@ -561,218 +561,6 @@ const resolveDevicesUrl = () => {
   }
 };
 
-const resolveDevicesGroupedUrl = () => {
-  if (config.integrator.devicesGroupedUrl) return config.integrator.devicesGroupedUrl;
-  if (!config.integrator.baseUrl) return '';
-  try {
-    const base = new URL(config.integrator.baseUrl);
-    return new URL('/api/v1/devices-grouped', base).toString();
-  } catch (error) {
-    return '';
-  }
-};
-
-const ensureArray = (value) => {
-  if (Array.isArray(value)) return value;
-  if (!value || typeof value !== 'object') return [];
-  if (Array.isArray(value.list)) return value.list;
-  if (Array.isArray(value.data)) return value.data;
-  if (value.data && Array.isArray(value.data.list)) return value.data.list;
-  return [];
-};
-
-const extractHierarchyText = (item) => {
-  if (!item || typeof item !== 'object') return '';
-  const values = [
-    item.structure_hierarchy,
-    item.structureHierarchy,
-    item.STRUCTURE_HIERARCHY,
-    item.root_group,
-    item.rootGroup,
-    item.ROOT_GROUP,
-    item.hierarchy,
-    item.group_name,
-    item.groupName
-  ];
-
-  return values
-    .filter((value) => value !== undefined && value !== null)
-    .map((value) => String(value))
-    .join(' | ');
-};
-
-const inferAreaFromHierarchy = (hierarchyText) => {
-  const normalized = normalizeText(hierarchyText).trim();
-  if (!normalized) return null;
-  if (normalized.includes('hauling')) return 'Hauling';
-  if (normalized.includes('mining')) return 'Mining';
-  return null;
-};
-
-const getNodeId = (item) =>
-  String(item?.id || item?.device_id || item?.group_id || '').trim();
-
-const getNodeParentId = (item) =>
-  String(item?.parent_id || item?.parentId || '').trim();
-
-const getNodeImei = (item) =>
-  String(item?.imei || item?.device_imei || item?.deviceImei || '').trim();
-
-const indexGroupedNodes = (nodes, nodeCache) => {
-  nodes.forEach((node) => {
-    const nodeId = getNodeId(node);
-    if (nodeId) nodeCache.set(nodeId, node);
-  });
-};
-
-const selectDeviceNodeByImei = (imei, groupedItems) => {
-  const exact = groupedItems.find(
-    (item) => getNodeImei(item) && getNodeImei(item) === imei
-  );
-  if (exact) return exact;
-
-  // Fallback for APIs that return a hierarchy set without explicit imei on all nodes.
-  return groupedItems.find((item) => {
-    const text = extractHierarchyText(item);
-    return text && text.includes(imei);
-  }) || null;
-};
-
-const findAreaFromNode = (node) =>
-  inferAreaFromHierarchy(
-    [
-      extractHierarchyText(node),
-      node?.name,
-      node?.group_name,
-      node?.groupName
-    ]
-      .filter(Boolean)
-      .join(' | ')
-  );
-
-const fetchNodeById = async (nodeId, headers, nodeCache) => {
-  if (!nodeId) return null;
-  if (nodeCache.has(nodeId)) return nodeCache.get(nodeId);
-
-  const groupedItems = await fetchDevicesGroupedBySearch(nodeId, headers);
-  if (!groupedItems.length) return null;
-
-  indexGroupedNodes(groupedItems, nodeCache);
-
-  const exact = groupedItems.find((item) => getNodeId(item) === nodeId);
-  if (exact) return exact;
-  if (nodeCache.has(nodeId)) return nodeCache.get(nodeId);
-  return groupedItems[0] || null;
-};
-
-const resolveAreaByImei = async (imei, headers, nodeCache) => {
-  if (!imei) return null;
-
-  const groupedItems = await fetchDevicesGroupedBySearch(imei, headers);
-  if (!groupedItems.length) return null;
-  indexGroupedNodes(groupedItems, nodeCache);
-
-  const startNode = selectDeviceNodeByImei(imei, groupedItems);
-  if (!startNode) return null;
-
-  let currentNode = startNode;
-  let guard = 0;
-
-  while (currentNode && guard < 25) {
-    guard += 1;
-
-    const area = findAreaFromNode(currentNode);
-    if (area) return area;
-
-    const parentId = getNodeParentId(currentNode);
-    if (!parentId) break;
-
-    currentNode = await fetchNodeById(parentId, headers, nodeCache);
-  }
-
-  return null;
-};
-
-const fetchDevicesGroupedBySearch = async (searchTerm, headers) => {
-  const devicesGroupedUrl = resolveDevicesGroupedUrl();
-  if (!devicesGroupedUrl) return [];
-
-  const url = new URL(devicesGroupedUrl);
-  url.searchParams.set('search', String(searchTerm || '').trim());
-
-  let responseMeta;
-  try {
-    responseMeta = await fetchWithTimeout(
-      url.toString(),
-      config.sensorApiTimeoutMs,
-      {
-        method: 'GET',
-        headers,
-        returnResponseMeta: true
-      }
-    );
-  } catch (error) {
-    if (
-      error.status === 401 &&
-      (config.integrator.authMode === 'login' ||
-        config.integrator.authMode === 'auto')
-    ) {
-      await loginIntegrator();
-      const retryHeaders = await buildIntegratorHeaders();
-      responseMeta = await fetchWithTimeout(
-        url.toString(),
-        config.sensorApiTimeoutMs,
-        {
-          method: 'GET',
-          headers: retryHeaders,
-          returnResponseMeta: true
-        }
-      );
-    } else {
-      throw error;
-    }
-  }
-
-  const data = responseMeta?.data;
-  if (!data || data.success === false) {
-    return [];
-  }
-
-  return ensureArray(data?.data || data);
-};
-
-const resolveImeiFromEvent = (event) =>
-  String(
-    event?.device?.imei ||
-      event?.imei ||
-      event?.device_imei ||
-      event?.device_id ||
-      ''
-  ).trim();
-
-const buildAreaLookupByImei = async (events, headers) => {
-  const imeis = Array.from(
-    new Set(events.map(resolveImeiFromEvent).filter(Boolean))
-  );
-  if (imeis.length === 0) {
-    return new Map();
-  }
-
-  const lookup = new Map();
-  const nodeCache = new Map();
-
-  for (const imei of imeis) {
-    try {
-      const area = await resolveAreaByImei(imei, headers, nodeCache);
-      lookup.set(imei, area || null);
-    } catch (error) {
-      lookup.set(imei, null);
-    }
-  }
-
-  return lookup;
-};
-
 const buildIntegratorHeaders = async () => {
   const headers = {
     'Content-Type': 'application/json',
@@ -938,29 +726,17 @@ const fetchIntegratorEvents = async () => {
     }
   }
 
-  const areaLookup = await buildAreaLookupByImei(list, headers);
-  const eventsWithResolvedArea = list.map((event) => {
-    const imei = resolveImeiFromEvent(event);
-    const resolvedArea = imei ? areaLookup.get(imei) : null;
-    if (!resolvedArea) return event;
-    return { ...event, _resolvedArea: resolvedArea };
-  });
-
-  const filterEntries = eventsWithResolvedArea.map(buildFilterDebugEntry);
-  const filteredList = eventsWithResolvedArea.filter((event, index) => {
+  const filterEntries = list.map(buildFilterDebugEntry);
+  const filteredList = list.filter((event, index) => {
     const kept = filterEntries[index]?.decision === 'KEPT';
     if (kept) {
       event._isWithinShift = true;
     }
     return kept;
   });
-  setAreaFilterDebugState(
-    filterEntries,
-    eventsWithResolvedArea.length,
-    filteredList.length
-  );
+  setAreaFilterDebugState(filterEntries, list.length, filteredList.length);
   logIntegratorDebug('Area window filter', {
-    total: eventsWithResolvedArea.length,
+    total: list.length,
     kept: filteredList.length
   });
 
@@ -1046,27 +822,26 @@ const fetchDevicesAll = async () => {
 };
 
 const fetchSensor = async (sensorId) => {
-  if (config.sensorApiMode === 'mock') {
-    return generateMockReading(sensorId);
-  }
-
-  if (config.sensorApiMode === 'integrator') {
-    throw new Error('Integrator mode does not support per-sensor fetch');
-  }
-
+  const currentMode = getSensorApiMode();
   if (!config.sensorApiBaseUrl) {
+    if (currentMode === 'mock') {
+      return generateMockReading(sensorId);
+    }
     throw new Error('SENSOR_API_BASE_URL is not set');
   }
 
-  const url = `${config.sensorApiBaseUrl.replace(/\/$/, '')}/sensors/${encodeURIComponent(
-    sensorId
-  )}`;
+  const base = config.sensorApiBaseUrl.replace(/\/$/, '');
+  const url = `${base}/sensors/${encodeURIComponent(sensorId)}`;
   const data = await fetchWithTimeout(url, config.sensorApiTimeoutMs);
-  return normalizeReading(sensorId, data);
+  return normalizeReading(sensorId, {
+    ...data,
+    source: currentMode === 'mock' ? 'mock' : data?.source
+  });
 };
 
 const fetchAllSensors = async (sensorIds) => {
-  if (config.sensorApiMode === 'integrator') {
+  const currentMode = getSensorApiMode();
+  if (currentMode === 'real' && config.integrator.baseUrl) {
     return fetchIntegratorEvents();
   }
 

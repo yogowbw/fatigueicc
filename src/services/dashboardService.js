@@ -1,6 +1,7 @@
 const { config } = require('../config/env');
 const { sql, getPool } = require('../db/sqlServer');
 const { QUERY_SENSOR_HISTORY, QUERY_LAST_READING } = require('../db/queries');
+const { getSensorApiMode } = require('../config/runtimeState');
 const { deviceHealthCache } = require('../cache/deviceHealthCache');
 const { getAreaFilterDebugState } = require('./sensorApiClient');
 
@@ -26,6 +27,7 @@ const formatDateLocal = (isoString) =>
   dateFormatter.format(isoString ? new Date(isoString) : new Date());
 
 const getTodayLocal = () => formatDateLocal();
+const MAX_MOCK_OPEN_ALERTS = 3;
 
 const normalizeAlertStatus = (reading) => {
   const status = String(reading.status || '').toLowerCase();
@@ -132,6 +134,53 @@ const toAlert = (reading) => {
     timestamp: reading.timestamp,
     sensorId: reading.sensorId
   };
+};
+
+const getAlertTimestampMs = (alert, fallbackIndex = 0) => {
+  if (alert?.timestamp) {
+    const parsed = new Date(alert.timestamp).getTime();
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  if (alert?.date && alert?.time) {
+    const parsed = new Date(`${alert.date}T${alert.time}`).getTime();
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallbackIndex;
+};
+
+const applyMockModeRules = (alerts) => {
+  if (!Array.isArray(alerts) || alerts.length === 0) return alerts;
+
+  const openWithIndex = alerts
+    .map((alert, index) => ({ alert, index }))
+    .filter((item) => item.alert.status === 'Open')
+    .sort(
+      (a, b) =>
+        getAlertTimestampMs(b.alert, b.index) -
+        getAlertTimestampMs(a.alert, a.index)
+    );
+
+  if (openWithIndex.length <= MAX_MOCK_OPEN_ALERTS) {
+    return alerts;
+  }
+
+  const keepOpen = new Set(
+    openWithIndex
+      .slice(0, MAX_MOCK_OPEN_ALERTS)
+      .map((item) => item.index)
+  );
+
+  return alerts.map((alert, index) => {
+    if (alert.status !== 'Open' || keepOpen.has(index)) {
+      return alert;
+    }
+
+    return {
+      ...alert,
+      status: 'Followed Up',
+      mockAutoFollowedUp: true
+    };
+  });
 };
 
 const computeDeviceHealth = (readings) => {
@@ -326,11 +375,20 @@ const createDashboardService = ({ cache, eventCache, pollingStatus }) => {
   const getOverview = async () => {
     const snapshot = cache.getSnapshot();
     const sensors = snapshot.sensors;
-    const eventReadings = eventCache ? eventCache.getAll() : sensors;
+    const currentMode = getSensorApiMode();
+    const useEventCache =
+      Boolean(eventCache) &&
+      Boolean(config.integrator.baseUrl) &&
+      currentMode === 'real';
+    const cachedEvents = useEventCache ? eventCache.getAll() : [];
+    const eventReadings =
+      useEventCache && cachedEvents.length > 0 ? cachedEvents : sensors;
     // The area window filtering is already handled in sensorApiClient.js
     // when fetching from the integrator. Removing the redundant filter here
     // simplifies the logic and prevents filtering data from non-integrator sources.
-    const metricsAlerts = eventReadings.map(toAlert);
+    const baseAlerts = eventReadings.map(toAlert);
+    const metricsAlerts =
+      currentMode === 'mock' ? applyMockModeRules(baseAlerts) : baseAlerts;
 
     // Start with default/fallback health
     let deviceHealth = resolveDeviceHealth(sensors);
@@ -351,6 +409,7 @@ const createDashboardService = ({ cache, eventCache, pollingStatus }) => {
       meta: {
         serverTime: now.toISOString(),
         serverDate: getTodayLocal(),
+        currentApiMode: currentMode,
         refreshMs: config.sensorPollIntervalMs,
         polling: pollingStatus ? pollingStatus() : null,
         eventCount: eventReadings.length,
