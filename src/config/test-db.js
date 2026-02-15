@@ -1,4 +1,4 @@
-const { getPool, sql } = require('../src/db/sqlServer');
+const { getPool, sql } = require('../db/sqlServer');
 
 async function testConnection() {
   console.log('Mencoba menghubungkan ke SQL Server...');

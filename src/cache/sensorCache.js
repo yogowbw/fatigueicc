@@ -55,6 +55,11 @@ class SensorCache {
       sensors: this.getAll()
     };
   }
+
+  clear() {
+    this.store.clear();
+    this.lastUpdatedAt = new Date().toISOString();
+  }
 }
 
 const sensorCache = new SensorCache();

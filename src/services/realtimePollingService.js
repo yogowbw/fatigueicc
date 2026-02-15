@@ -31,7 +31,7 @@ const pollOnce = async (cache, eventsCache) => {
 
     normalized.forEach((reading) => cache.upsert(reading));
 
-    if (eventsCache && config.sensorApiMode === 'integrator') {
+    if (eventsCache && normalized.some((reading) => reading.source === 'integrator')) {
       eventsCache.replace(normalized);
     }
 

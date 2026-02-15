@@ -43,6 +43,11 @@ class EventCache {
       events: this.events
     };
   }
+
+  clear() {
+    this.events = [];
+    this.lastUpdatedAt = new Date().toISOString();
+  }
 }
 
 const eventCache = new EventCache();

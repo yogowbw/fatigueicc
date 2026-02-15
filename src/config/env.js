@@ -37,9 +37,7 @@ const defaultSensorIds = [
 const sensorIdsSource =
   process.env.SENSOR_IDS !== undefined
     ? process.env.SENSOR_IDS
-    : process.env.INTEGRATOR_BASE_URL
-      ? ''
-      : defaultSensorIds.join(',');
+    : defaultSensorIds.join(',');
 
 const sensorIds = sensorIdsSource
   .split(',')
@@ -54,7 +52,7 @@ const config = {
   port: toInt(process.env.PORT, 3000),
   sensorApiBaseUrl: process.env.SENSOR_API_BASE_URL || '',
   sensorApiTimeoutMs: toInt(process.env.SENSOR_API_TIMEOUT_MS, 2000),
-  sensorPollIntervalMs: toInt(process.env.SENSOR_POLL_INTERVAL_MS, 1000),
+  sensorPollIntervalMs: toInt(process.env.SENSOR_POLL_INTERVAL_MS, 5000),
   persistIntervalMs: toInt(process.env.PERSIST_INTERVAL_MS, 60000),
   jobs: {
     enableRealtimePolling: toBool(process.env.ENABLE_REALTIME_POLLING, true),
@@ -117,13 +115,7 @@ const config = {
     coverage: toInt(process.env.DEVICE_HEALTH_COVERAGE, 95)
   },
   devicePollIntervalMs: toInt(process.env.DEVICE_POLL_INTERVAL_MS, 10000),
-  sensorApiMode:
-    process.env.SENSOR_API_MODE ||
-    (process.env.INTEGRATOR_BASE_URL
-      ? 'integrator'
-      : process.env.SENSOR_API_BASE_URL
-        ? 'real'
-        : 'mock'),
+  sensorApiMode: process.env.SENSOR_API_MODE || 'real',
   sensorIds,
   integrator: {
     baseUrl: process.env.INTEGRATOR_BASE_URL || '',
@@ -146,7 +138,7 @@ const config = {
       process.env.INTEGRATOR_FILTER_COLUMNS,
       'alarm_type,manual_verification_is_true_alarm,level'
     ),
-    filterValue: toOptionalString(process.env.INTEGRATOR_FILTER_VALUE, '132,121|true|3')
+    filterValue: toOptionalString(process.env.INTEGRATOR_FILTER_VALUE, '122,121|true|3')
   },
   debugIntegrator: toBool(process.env.INTEGRATOR_DEBUG, false),
   sql: {

@@ -1,5 +1,6 @@
 const express = require('express');
 const { dashboardRouter } = require('./routes/dashboardRoutes');
+const { configRouter } = require('./routes/configRoutes');
 
 const createApp = () => {
   const app = express();
@@ -11,6 +12,7 @@ const createApp = () => {
   });
 
   app.use('/api/dashboard', dashboardRouter);
+  app.use('/api/config', configRouter);
 
   return app;
 };

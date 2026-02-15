@@ -18,14 +18,12 @@ const start = async () => {
 
   if (config.jobs.enableRealtimePolling) {
     startRealtimePolling(sensorCache, eventCache);
-  } else {
-    console.log('Realtime polling is disabled by ENABLE_REALTIME_POLLING=false');
+    console.log('Realtime polling job started.');
   }
 
   if (config.jobs.enableDevicePolling) {
     startDevicePolling();
-  } else {
-    console.log('Device polling is disabled by ENABLE_DEVICE_POLLING=false');
+    console.log('Device polling job started.');
   }
 
   if (config.jobs.enablePersistenceJob) {
