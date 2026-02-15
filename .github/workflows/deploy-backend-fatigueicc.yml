@@ -12,6 +12,10 @@ on:
       - ".github/workflows/deploy-backend-fatigueicc.yml"
   workflow_dispatch:
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -39,9 +43,15 @@ jobs:
           cd deploy
           zip -r ../backend-release.zip .
 
+     - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_81719B716BF14769957CE06AAD2976B2 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_BCC0BC89290E4710822B9C9D04123231 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_80755064954848CF943DB6F6109D00D6 }}    
+
       - name: Deploy to Azure Web App (fatigueicc)
         uses: azure/webapps-deploy@v3
         with:
-          app-name: fatigueicc
-          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_FATIGUEICC }}
+          app-name: fatigueicc          
           package: backend-release.zip
