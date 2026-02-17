@@ -131,6 +131,19 @@ const config = {
     pageSize: toInt(process.env.INTEGRATOR_PAGE_SIZE, 50),
     fetchAllPages: toBool(process.env.INTEGRATOR_FETCH_ALL_PAGES, true),
     maxPages: toInt(process.env.INTEGRATOR_MAX_PAGES, 20),
+    requestTimeoutMs: toInt(
+      process.env.INTEGRATOR_REQUEST_TIMEOUT_MS,
+      toInt(process.env.INTEGRATOR_TIMEOUT_MS, 8000)
+    ),
+    maxFilterDebugEntries: toInt(process.env.INTEGRATOR_MAX_FILTER_DEBUG_ENTRIES, 200),
+    requestRetries: Math.max(0, toInt(process.env.INTEGRATOR_REQUEST_RETRIES, 1)),
+    retryDelayMs: Math.max(0, toInt(process.env.INTEGRATOR_RETRY_DELAY_MS, 400)),
+    incrementalEnabled: toBool(process.env.INTEGRATOR_INCREMENTAL_ENABLED, true),
+    incrementalOverlapSeconds: Math.max(
+      0,
+      toInt(process.env.INTEGRATOR_INCREMENTAL_OVERLAP_SECONDS, 90)
+    ),
+    fullResyncMinutes: Math.max(1, toInt(process.env.INTEGRATOR_FULL_RESYNC_MINUTES, 30)),
     rangeStartTime: process.env.INTEGRATOR_RANGE_START_TIME || '00:00:00',
     rangeEndTime: process.env.INTEGRATOR_RANGE_END_TIME || '',
     rangeEndMode: process.env.INTEGRATOR_RANGE_END_MODE || 'now',

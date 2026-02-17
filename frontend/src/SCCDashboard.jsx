@@ -61,6 +61,8 @@ const SCCDashboard = () => {
   const [showAreaLogReport, setShowAreaLogReport] = useState(false);
   const [selectedAreaLogEntry, setSelectedAreaLogEntry] = useState(null);
   const [decisionSortOrder, setDecisionSortOrder] = useState('asc');
+  const [timeSortOrder, setTimeSortOrder] = useState('desc');
+  const [logSortColumn, setLogSortColumn] = useState('decision');
   const [isSwitchingMode, setIsSwitchingMode] = useState(false);
   const [deviceHealth, setDeviceHealth] = useState({
     total: 0,
@@ -1063,38 +1065,71 @@ const SCCDashboard = () => {
 
   const areaFilterDebug = overviewMeta?.areaFilterDebug || null;
   const areaFilterEntries = useMemo(() => {
-    if (!areaFilterDebug || !Array.isArray(areaFilterDebug.entries)) return [];
+    if (!areaFilterDebug || !Array.isArray(areaFilterDebug.entries))
+      return [];
     return areaFilterDebug.entries;
   }, [areaFilterDebug]);
   const areaFilterSummary = useMemo(() => {
-    const total = Number(areaFilterDebug?.total) || 0;
-    const kept =
+    const allTotal = Number(areaFilterDebug?.total) || areaFilterEntries.length;
+    const allKept =
       Number.isFinite(Number(areaFilterDebug?.kept))
         ? Number(areaFilterDebug.kept)
         : areaFilterEntries.filter((entry) => entry?.decision === 'KEPT').length;
-    const dropped =
+    const allDropped =
       Number.isFinite(Number(areaFilterDebug?.dropped))
         ? Number(areaFilterDebug.dropped)
-        : Math.max(0, total - kept);
-    const keepRate = total > 0 ? Math.round((kept / total) * 100) : 0;
-    const dropRate = total > 0 ? Math.round((dropped / total) * 100) : 0;
+        : Math.max(0, allTotal - allKept);
 
-    return { total, kept, dropped, keepRate, dropRate };
+    const calculateStats = (entries) => {
+      if (!entries || entries.length === 0) {
+        return { total: 0, kept: 0, dropped: 0, keepRate: 0, dropRate: 0 };
+      }
+      const total = entries.length;
+      const kept = entries.filter((entry) => entry?.decision === 'KEPT').length;
+      const dropped = total - kept;
+      const keepRate = total > 0 ? Math.round((kept / total) * 100) : 0;
+      const dropRate = total > 0 ? Math.round((dropped / total) * 100) : 0;
+      return { total, kept, dropped, keepRate, dropRate };
+    };
+
+    const miningEntries = areaFilterEntries.filter((e) => e.area === 'Mining');
+    const haulingEntries = areaFilterEntries.filter((e) => e.area === 'Hauling');
+
+    return {
+      all: {
+        total: allTotal,
+        kept: allKept,
+        dropped: allDropped,
+        keepRate: allTotal > 0 ? Math.round((allKept / allTotal) * 100) : 0,
+        dropRate: allTotal > 0 ? Math.round((allDropped / allTotal) * 100) : 0
+      },
+      mining: calculateStats(miningEntries),
+      hauling: calculateStats(haulingEntries)
+    };
   }, [areaFilterDebug, areaFilterEntries]);
 
   const sortedAreaFilterEntries = useMemo(() => {
     const rows = [...areaFilterEntries];
     rows.sort((a, b) => {
+      if (logSortColumn === 'time') {
+        const aTime = String(a?.time || '00:00:00');
+        const bTime = String(b?.time || '00:00:00');
+        if (aTime === bTime) return 0;
+        return timeSortOrder === 'asc'
+          ? aTime.localeCompare(bTime)
+          : bTime.localeCompare(aTime);
+      }
+
+      // Default to decision sort
       const aDecision = String(a?.decision || '');
       const bDecision = String(b?.decision || '');
       if (aDecision === bDecision) return 0;
-      if (decisionSortOrder === 'asc') {
-        return aDecision.localeCompare(bDecision);
-      }
-      return bDecision.localeCompare(aDecision);
+      return decisionSortOrder === 'asc'
+        ? aDecision.localeCompare(bDecision)
+        : bDecision.localeCompare(aDecision);
     });
     return rows;
-  }, [areaFilterEntries, decisionSortOrder]);
+  }, [areaFilterEntries, decisionSortOrder, timeSortOrder, logSortColumn]);
 
   useEffect(() => {
     if (!showAreaLogReport) return;
@@ -1246,26 +1281,41 @@ const SCCDashboard = () => {
               </button>
             </div>
 
-            <div className="p-[2vh] grid grid-cols-2 lg:grid-cols-5 gap-2 shrink-0 border-b border-inherit">
-              <div className={`rounded-lg border p-2 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'}`}>
+            <div className="p-[2vh] grid grid-cols-2 lg:grid-cols-5 gap-3 shrink-0 border-b border-inherit">
+              <div className={`rounded-lg border p-2 flex flex-col justify-between ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'}`}>
                 <div className="text-[10px] opacity-60 uppercase">Total</div>
-                <div className="text-xl font-bold font-mono">{areaFilterSummary.total}</div>
+                <div className="flex items-baseline gap-2 mt-1">
+                  <div className="text-xl font-bold font-mono">{areaFilterSummary.all.total}</div>
+                  <div className="text-xs font-mono opacity-70">M:{areaFilterSummary.mining.total} H:{areaFilterSummary.hauling.total}</div>
+                </div>
               </div>
-              <div className={`rounded-lg border p-2 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'}`}>
+              <div className={`rounded-lg border p-2 flex flex-col justify-between ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'}`}>
                 <div className="text-[10px] opacity-60 uppercase">Kept</div>
-                <div className="text-xl font-bold font-mono text-emerald-500">{areaFilterSummary.kept}</div>
+                <div className="flex items-baseline gap-2 mt-1">
+                  <div className="text-xl font-bold font-mono text-emerald-500">{areaFilterSummary.all.kept}</div>
+                  <div className="text-xs font-mono opacity-70">M:{areaFilterSummary.mining.kept} H:{areaFilterSummary.hauling.kept}</div>
+                </div>
               </div>
-              <div className={`rounded-lg border p-2 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'}`}>
+              <div className={`rounded-lg border p-2 flex flex-col justify-between ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'}`}>
                 <div className="text-[10px] opacity-60 uppercase">Dropped</div>
-                <div className="text-xl font-bold font-mono text-red-500">{areaFilterSummary.dropped}</div>
+                <div className="flex items-baseline gap-2 mt-1">
+                  <div className="text-xl font-bold font-mono text-red-500">{areaFilterSummary.all.dropped}</div>
+                  <div className="text-xs font-mono opacity-70">M:{areaFilterSummary.mining.dropped} H:{areaFilterSummary.hauling.dropped}</div>
+                </div>
               </div>
-              <div className={`rounded-lg border p-2 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'}`}>
+              <div className={`rounded-lg border p-2 flex flex-col justify-between ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'}`}>
                 <div className="text-[10px] opacity-60 uppercase">Keep Rate</div>
-                <div className="text-xl font-bold font-mono text-blue-500">{areaFilterSummary.keepRate}%</div>
+                <div className="flex items-baseline gap-2 mt-1">
+                  <div className="text-xl font-bold font-mono text-blue-500">{areaFilterSummary.all.keepRate}%</div>
+                  <div className="text-xs font-mono opacity-70">M:{areaFilterSummary.mining.keepRate}% H:{areaFilterSummary.hauling.keepRate}%</div>
+                </div>
               </div>
-              <div className={`rounded-lg border p-2 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'}`}>
+              <div className={`rounded-lg border p-2 flex flex-col justify-between ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'}`}>
                 <div className="text-[10px] opacity-60 uppercase">Drop Rate</div>
-                <div className="text-xl font-bold font-mono text-amber-500">{areaFilterSummary.dropRate}%</div>
+                <div className="flex items-baseline gap-2 mt-1">
+                  <div className="text-xl font-bold font-mono text-amber-500">{areaFilterSummary.all.dropRate}%</div>
+                  <div className="text-xs font-mono opacity-70">M:{areaFilterSummary.mining.dropRate}% H:{areaFilterSummary.hauling.dropRate}%</div>
+                </div>
               </div>
             </div>
 
@@ -1279,21 +1329,41 @@ const SCCDashboard = () => {
                         <th className="text-left p-2 font-semibold">
                           <button
                             type="button"
-                            onClick={() =>
-                              setDecisionSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))
-                            }
+                            onClick={() => {
+                              setLogSortColumn('decision');
+                              setDecisionSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+                            }}
                             className="inline-flex items-center gap-1 hover:opacity-80"
                             title="Sort by Decision"
                           >
                             Decision
-                            <span className="font-mono text-[10px]">
-                              {decisionSortOrder === 'asc' ? 'A-Z' : 'Z-A'}
-                            </span>
+                            {logSortColumn === 'decision' && (
+                              <span className="font-mono text-[10px]">
+                                {decisionSortOrder === 'asc' ? 'A-Z' : 'Z-A'}
+                              </span>
+                            )}
                           </button>
                         </th>
                         <th className="text-left p-2 font-semibold">Unit</th>
                         <th className="text-left p-2 font-semibold">Area</th>
-                        <th className="text-left p-2 font-semibold">Time</th>
+                        <th className="text-left p-2 font-semibold">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setLogSortColumn('time');
+                              setTimeSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+                            }}
+                            className="inline-flex items-center gap-1 hover:opacity-80"
+                            title="Sort by Time"
+                          >
+                            Time
+                            {logSortColumn === 'time' && (
+                              <span className="font-mono text-[10px]">
+                                {timeSortOrder === 'asc' ? 'ASC' : 'DESC'}
+                              </span>
+                            )}
+                          </button>
+                        </th>
                         <th className="text-left p-2 font-semibold">Window</th>
                         <th className="text-left p-2 font-semibold">Reason</th>
                       </tr>
@@ -2494,4 +2564,3 @@ const SCCDashboard = () => {
 };
 
 export default SCCDashboard;
-

@@ -429,6 +429,17 @@ Catatan:
     INTEGRATOR_MAX_PAGES=20
     INTEGRATOR_PAGE_SIZE=50
     ```
+  - Mode incremental aman (hemat bandwidth + tetap sinkron):
+    ```
+    INTEGRATOR_INCREMENTAL_ENABLED=true
+    INTEGRATOR_INCREMENTAL_OVERLAP_SECONDS=90
+    INTEGRATOR_FULL_RESYNC_MINUTES=30
+    ```
+    Backend akan fetch delta dari request terakhir dengan overlap kecil untuk mencegah miss event,
+    lalu melakukan full-sync periodik agar data tetap konsisten dengan sumber.
+   - Untuk melihat semua entri di "Area Filter Log Report" (jika > 200), set: `INTEGRATOR_MAX_FILTER_DEBUG_ENTRIES=1000`.
+   - Untuk mematikan filter shift-window (untuk debug), set: `INTEGRATOR_APPLY_SHIFT_FILTER=false`.
+   - Jika request sering timeout, Anda bisa menaikkan batas waktunya: `INTEGRATOR_REQUEST_TIMEOUT_MS=10000` (10 detik).
   - Mapping area bisa disesuaikan dengan keyword/prefix:
     ```
     HAULING_GROUP_KEYWORDS=hauling

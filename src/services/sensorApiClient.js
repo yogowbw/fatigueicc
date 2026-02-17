@@ -7,6 +7,8 @@ const mockOperators = ['Budi S.', 'Dedi S.', 'Rian J.', 'Doni K.', 'Yanto', 'Agu
 const mockLocationsMining = ['Manado - Front A', 'Manado - Front B', 'Pit Utara'];
 const mockLocationsHauling = ['KM 10', 'KM 22', 'KM 45', 'KM 55'];
 const MAX_FILTER_DEBUG_ENTRIES = 200;
+const DATE_TIME_TEXT_REGEX =
+  /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})(?::(\d{2}))?$/;
 
 const areaFilterDebugState = {
   updatedAt: null,
@@ -108,8 +110,26 @@ const parseJsonSafe = async (response) => {
 const authState = {
   accessToken: null,
   token: null,
-  obtainedAt: null
+  obtainedAt: null,
+  loginPromise: null
 };
+
+const integratorIncrementalState = {
+  localDate: null,
+  lastRangeEnd: null,
+  lastFullSyncAt: null,
+  eventsByKey: new Map(),
+  filterDebugByKey: new Map()
+};
+
+const sleep = (ms) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+const isAbortError = (error) =>
+  error?.name === 'AbortError' ||
+  String(error?.message || '').toLowerCase().includes('aborted');
 
 const fetchWithTimeout = async (url, timeoutMs, options = {}) => {
   const controller = new AbortController();
@@ -130,9 +150,45 @@ const fetchWithTimeout = async (url, timeoutMs, options = {}) => {
     return returnResponseMeta
       ? { data, status: response.status }
       : data;
+  } catch (error) {
+    if (isAbortError(error)) {
+      const timeoutError = new Error(`Sensor API timeout after ${timeoutMs} ms`);
+      timeoutError.code = 'ETIMEDOUT';
+      timeoutError.isTimeout = true;
+      throw timeoutError;
+    }
+    throw error;
   } finally {
     clearTimeout(timer);
   }
+};
+
+const fetchWithRetry = async (url, timeoutMs, options = {}) => {
+  const retries = config.integrator.requestRetries || 0;
+  const retryDelayMs = config.integrator.retryDelayMs || 0;
+  let attempt = 0;
+  let lastError = null;
+
+  while (attempt <= retries) {
+    try {
+      return await fetchWithTimeout(url, timeoutMs, options);
+    } catch (error) {
+      lastError = error;
+      const canRetry = error?.isTimeout === true || isAbortError(error);
+      if (!canRetry || attempt >= retries) break;
+      attempt += 1;
+      logIntegratorDebug('Retry after timeout', {
+        attempt,
+        retries,
+        delayMs: retryDelayMs
+      });
+      if (retryDelayMs > 0) {
+        await sleep(retryDelayMs);
+      }
+    }
+  }
+
+  throw lastError;
 };
 
 const formatDateLocal = (date) =>
@@ -160,6 +216,55 @@ const formatDateTimeFixed = (date, timeValue) => {
   if (!time) return formatDateTimeLocal(date);
   return `${formatDateLocal(date)} ${time}`;
 };
+
+const parseDateTimeText = (value) => {
+  const match = String(value || '').match(DATE_TIME_TEXT_REGEX);
+  if (!match) return null;
+  return {
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3]),
+    hour: Number(match[4]),
+    minute: Number(match[5]),
+    second: Number(match[6] || 0)
+  };
+};
+
+const dateTimeTextToMs = (value) => {
+  const parsed = parseDateTimeText(value);
+  if (!parsed) return null;
+  return Date.UTC(
+    parsed.year,
+    parsed.month - 1,
+    parsed.day,
+    parsed.hour,
+    parsed.minute,
+    parsed.second,
+    0
+  );
+};
+
+const msToDateTimeText = (value) => {
+  const ms = Number(value);
+  if (!Number.isFinite(ms)) return null;
+  const date = new Date(ms);
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const hour = String(date.getUTCHours()).padStart(2, '0');
+  const minute = String(date.getUTCMinutes()).padStart(2, '0');
+  const second = String(date.getUTCSeconds()).padStart(2, '0');
+  return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+};
+
+const shiftDateTimeText = (value, deltaMs) => {
+  const sourceMs = dateTimeTextToMs(value);
+  if (!Number.isFinite(sourceMs)) return value;
+  return msToDateTimeText(sourceMs + deltaMs) || value;
+};
+
+const laterDateTimeText = (a, b) => (String(a) > String(b) ? a : b);
+const earlierDateTimeText = (a, b) => (String(a) < String(b) ? a : b);
 
 const timeToMinutes = (value) => {
   if (!value) return null;
@@ -267,8 +372,7 @@ const resolveRangeEnd = (date) => {
   return formatDateTimeLocal(date);
 };
 
-const buildIntegratorPayload = (page = 1) => {
-  const now = new Date();
+const buildIntegratorRange = (now = new Date()) => {
   const today = formatDateLocal(now);
   const envelope = getAreaWindowEnvelope();
   const rangeStartTime = envelope
@@ -286,9 +390,17 @@ const buildIntegratorPayload = (page = 1) => {
     rangeEnd = `${today} ${minutesToClock(safeEnd)}`;
   }
 
+  return {
+    today,
+    rangeStart,
+    rangeEnd
+  };
+};
+
+const buildIntegratorPayload = (page = 1, range = {}) => {
   const payload = {
-    range_date_start: rangeStart,
-    range_date_end: rangeEnd,
+    range_date_start: range.rangeStart,
+    range_date_end: range.rangeEnd,
     range_date_columns: 'device_time',
     page,
     page_size: config.integrator.pageSize
@@ -310,6 +422,110 @@ const buildIntegratorPayload = (page = 1) => {
 
   return payload;
 };
+
+const resetIncrementalState = () => {
+  integratorIncrementalState.localDate = null;
+  integratorIncrementalState.lastRangeEnd = null;
+  integratorIncrementalState.lastFullSyncAt = null;
+  integratorIncrementalState.eventsByKey.clear();
+  integratorIncrementalState.filterDebugByKey.clear();
+};
+
+const shouldRunFullSync = () => {
+  if (!config.integrator.incrementalEnabled) return true;
+  if (!integratorIncrementalState.lastRangeEnd) return true;
+
+  const intervalMs = (config.integrator.fullResyncMinutes || 30) * 60 * 1000;
+  if (!integratorIncrementalState.lastFullSyncAt) return true;
+
+  const lastFull = new Date(integratorIncrementalState.lastFullSyncAt).getTime();
+  if (!Number.isFinite(lastFull)) return true;
+  return Date.now() - lastFull >= intervalMs;
+};
+
+const resolveIncrementalRange = () => {
+  const baseRange = buildIntegratorRange(new Date());
+  const today = baseRange.today;
+
+  if (integratorIncrementalState.localDate && integratorIncrementalState.localDate !== today) {
+    resetIncrementalState();
+  }
+
+  if (!config.integrator.incrementalEnabled || shouldRunFullSync()) {
+    return {
+      ...baseRange,
+      isFullSync: true,
+      reason: 'full-sync'
+    };
+  }
+
+  const overlapMs = (config.integrator.incrementalOverlapSeconds || 90) * 1000;
+  const candidateStart = shiftDateTimeText(
+    integratorIncrementalState.lastRangeEnd,
+    -overlapMs
+  );
+  const incrementalStart = laterDateTimeText(candidateStart, baseRange.rangeStart);
+  const safeStart = earlierDateTimeText(incrementalStart, baseRange.rangeEnd);
+
+  return {
+    ...baseRange,
+    rangeStart: safeStart,
+    isFullSync: false,
+    reason: 'incremental'
+  };
+};
+
+const getIntegratorEventKey = (event) =>
+  event?.id ||
+  event?.identity ||
+  `${event?.device_id || event?.device?.imei || event?.device?.name || 'unknown'}|${
+    event?.server_time || event?.upload_at || event?.time || ''
+  }`;
+
+const mergeIncrementalEvents = (events, rangeMeta) => {
+  if (rangeMeta?.isFullSync) {
+    integratorIncrementalState.eventsByKey.clear();
+  }
+
+  (events || []).forEach((event) => {
+    const key = getIntegratorEventKey(event);
+    if (!key) return;
+    integratorIncrementalState.eventsByKey.set(key, event);
+  });
+
+  integratorIncrementalState.localDate = rangeMeta?.today || formatDateLocal(new Date());
+  integratorIncrementalState.lastRangeEnd = rangeMeta?.rangeEnd || null;
+  if (rangeMeta?.isFullSync) {
+    integratorIncrementalState.lastFullSyncAt = new Date().toISOString();
+  }
+};
+
+const mergeAreaFilterDebugEntries = (events, entries, rangeMeta) => {
+  if (rangeMeta?.isFullSync) {
+    integratorIncrementalState.filterDebugByKey.clear();
+  }
+
+  (events || []).forEach((event, index) => {
+    const key = getIntegratorEventKey(event) || `${index}`;
+    const entry = entries?.[index];
+    if (!entry) return;
+    // Move-to-end behavior keeps the most recently seen entries at the tail.
+    integratorIncrementalState.filterDebugByKey.delete(key);
+    integratorIncrementalState.filterDebugByKey.set(key, entry);
+  });
+
+  const mergedEntries = Array.from(integratorIncrementalState.filterDebugByKey.values());
+  const total = mergedEntries.length;
+  const kept = mergedEntries.filter((item) => item.decision === 'KEPT').length;
+  setAreaFilterDebugState(mergedEntries, total, kept);
+};
+
+const getMergedSortedEvents = () =>
+  Array.from(integratorIncrementalState.eventsByKey.values()).sort((a, b) => {
+    const aTime = new Date(a?.server_time || a?.upload_at || a?.time || 0).getTime();
+    const bTime = new Date(b?.server_time || b?.upload_at || b?.time || 0).getTime();
+    return bTime - aTime;
+  });
 const normalizeText = (value) => String(value || '').toLowerCase();
 
 const matchesAnyKeyword = (value, keywords) => {
@@ -418,6 +634,11 @@ const resolveLoginUrl = () => {
 };
 
 const loginIntegrator = async () => {
+  if (authState.loginPromise) {
+    return authState.loginPromise;
+  }
+
+  authState.loginPromise = (async () => {
   const loginUrl = resolveLoginUrl();
   if (!loginUrl) {
     throw new Error('INTEGRATOR_LOGIN_URL is not set');
@@ -428,7 +649,10 @@ const loginIntegrator = async () => {
 
   logIntegratorDebug('Login', { url: loginUrl, username: config.integrator.username });
 
-  const responseMeta = await fetchWithTimeout(loginUrl, config.sensorApiTimeoutMs, {
+  const responseMeta = await fetchWithRetry(
+    loginUrl,
+    config.integrator.requestTimeoutMs || config.sensorApiTimeoutMs,
+    {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -439,7 +663,8 @@ const loginIntegrator = async () => {
       password: config.integrator.password
     }),
     returnResponseMeta: true
-  });
+  }
+  );
 
   const data = responseMeta?.data;
   if (!data || data.success === false) {
@@ -463,6 +688,13 @@ const loginIntegrator = async () => {
   });
 
   return { accessToken, token };
+  })();
+
+  try {
+    return await authState.loginPromise;
+  } finally {
+    authState.loginPromise = null;
+  }
 };
 
 const applyAuthHeaders = async (headers) => {
@@ -610,7 +842,8 @@ const fetchIntegratorEvents = async () => {
     hasAccessToken: Boolean(headers.access_token)
   });
 
-  const payload = buildIntegratorPayload(1);
+  const rangeMeta = resolveIncrementalRange();
+  const payload = buildIntegratorPayload(1, rangeMeta);
   if (
     config.integrator.authMode === 'body' ||
     config.integrator.authMode === 'both'
@@ -622,14 +855,15 @@ const fetchIntegratorEvents = async () => {
   logIntegratorDebug('Request', {
     url: config.integrator.baseUrl,
     authMode: config.integrator.authMode,
+    rangeMode: rangeMeta.reason,
     payload: redactPayload(payload)
   });
 
   let responseMeta;
   try {
-    responseMeta = await fetchWithTimeout(
+    responseMeta = await fetchWithRetry(
       config.integrator.baseUrl,
-      config.sensorApiTimeoutMs,
+      config.integrator.requestTimeoutMs || config.sensorApiTimeoutMs,
       {
         method: 'POST',
         headers,
@@ -645,9 +879,9 @@ const fetchIntegratorEvents = async () => {
     ) {
       await loginIntegrator();
       await applyAuthHeaders(headers);
-      responseMeta = await fetchWithTimeout(
+      responseMeta = await fetchWithRetry(
         config.integrator.baseUrl,
-        config.sensorApiTimeoutMs,
+        config.integrator.requestTimeoutMs || config.sensorApiTimeoutMs,
         {
           method: 'POST',
           headers,
@@ -700,16 +934,17 @@ const fetchIntegratorEvents = async () => {
     );
 
     for (let page = 2; page <= totalPages; page += 1) {
-      const pagePayload = buildIntegratorPayload(page);
+      const pagePayload = buildIntegratorPayload(page, rangeMeta);
       logIntegratorDebug('Request', {
         url: config.integrator.baseUrl,
         authMode: config.integrator.authMode,
+        rangeMode: rangeMeta.reason,
         payload: redactPayload(pagePayload)
       });
 
-      const pageResponse = await fetchWithTimeout(
+      const pageResponse = await fetchWithRetry(
         config.integrator.baseUrl,
-        config.sensorApiTimeoutMs,
+        config.integrator.requestTimeoutMs || config.sensorApiTimeoutMs,
         {
           method: 'POST',
           headers,
@@ -734,13 +969,24 @@ const fetchIntegratorEvents = async () => {
     }
     return kept;
   });
-  setAreaFilterDebugState(filterEntries, list.length, filteredList.length);
+  mergeAreaFilterDebugEntries(list, filterEntries, rangeMeta);
   logIntegratorDebug('Area window filter', {
-    total: list.length,
-    kept: filteredList.length
+    total: getAreaFilterDebugState().total,
+    kept: getAreaFilterDebugState().kept
   });
 
-  return filteredList.map(mapIntegratorEventToReading);
+  mergeIncrementalEvents(filteredList, rangeMeta);
+  const mergedEvents = getMergedSortedEvents();
+
+  logIntegratorDebug('Incremental state', {
+    mode: rangeMeta.reason,
+    rangeStart: rangeMeta.rangeStart,
+    rangeEnd: rangeMeta.rangeEnd,
+    batchKept: filteredList.length,
+    mergedTotal: mergedEvents.length
+  });
+
+  return mergedEvents.map(mapIntegratorEventToReading);
 };
 
 const fetchDevicesAll = async () => {
@@ -762,9 +1008,9 @@ const fetchDevicesAll = async () => {
 
   let responseMeta;
   try {
-    responseMeta = await fetchWithTimeout(
+    responseMeta = await fetchWithRetry(
       devicesUrl,
-      config.sensorApiTimeoutMs,
+      config.integrator.requestTimeoutMs || config.sensorApiTimeoutMs,
       {
         method: 'GET',
         headers,
@@ -779,9 +1025,9 @@ const fetchDevicesAll = async () => {
     ) {
       await loginIntegrator();
       const retryHeaders = await buildIntegratorHeaders();
-      responseMeta = await fetchWithTimeout(
+      responseMeta = await fetchWithRetry(
         devicesUrl,
-        config.sensorApiTimeoutMs,
+        config.integrator.requestTimeoutMs || config.sensorApiTimeoutMs,
         {
           method: 'GET',
           headers: retryHeaders,
