@@ -1774,8 +1774,15 @@ const SCCDashboard = () => {
                     <div className="absolute inset-0 bg-green-900/10 z-10 pointer-events-none mix-blend-overlay"></div>
                     <div className="absolute inset-0 bg-[radial-gradient(circle,transparent_40%,#000_100%)] z-20 pointer-events-none"></div>
                     <div className="absolute top-[25%] left-[30%] right-[30%] bottom-[25%] border-4 border-red-500/80 rounded-lg z-30 shadow-[0_0_20px_rgba(239,68,68,0.5)] animate-pulse flex flex-col items-center justify-end pb-4">
-                      <div className="bg-red-600 text-white text-sm lg:text-base font-bold px-3 py-1.5 rounded flex items-center gap-2 shadow-lg">
-                        <EyeOff size={16} /> EYES CLOSED (2.5s)
+                      <div className="bg-red-600 text-white text-sm lg:text-base font-bold px-3 py-1.5 rounded flex items-center gap-2 shadow-lg max-w-full">
+                        {(selectedAlert.fatigue || '').toLowerCase().includes('yawn') ? (
+                          <AlertTriangle size={16} />
+                        ) : (
+                          <EyeOff size={16} />
+                        )}
+                        <span className="truncate">
+                          {(selectedAlert.fatigue || 'FATIGUE').toUpperCase()}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -2492,61 +2499,75 @@ const SCCDashboard = () => {
                 ) : (
                   paginate(sortedActiveAlerts, activeFatiguePage, dynamicItemsPerPage.activeFatigue).map((alert) => {
                     const displayTime = DEMO_MODE ? demoTimeString : alert.time;
+                    const isYawning = (alert.fatigue || '').toLowerCase().includes('yawn');
+
+                    const fatigueColorClasses = {
+                      border: isYawning ? 'border-l-amber-500' : 'border-l-red-500',
+                      bg: isYawning ? 'bg-amber-500' : 'bg-red-600',
+                      text: isYawning ? 'text-amber-500' : 'text-red-500',
+                      labelTextColor: isYawning ? 'text-slate-900' : 'text-white'
+                    };
                     return (
-                    <div
-                      key={alert.id}
-                      className={`relative p-[1vh] rounded-lg border transition-all hover:scale-[1.01] cursor-pointer group ${
-                        darkMode
-                          ? 'bg-slate-800 border-l-4 border-l-red-500 border-y-slate-700 border-r-slate-700 hover:border-slate-500'
-                          : 'bg-white border-l-4 border-l-red-500 border-y-slate-200 border-r-slate-200 shadow-sm hover:shadow-md'
-                      } ${
-                        !alert.isWithinShift ? 'opacity-60 grayscale' : ''
-                      }`}
-                      onClick={() => handleSelectAlert(alert)}
-                      title={!alert.isWithinShift ? 'Event is outside of shift hours and is ignored by statistics.' : ''}
-                    >
-                      <div className="flex justify-between items-start mb-1">
-                        <div className="flex items-center gap-2">
-                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-red-600 text-white`}>
-                            {alert.fatigue || alert.type || 'Fatigue'}
-                          </span>
-                          <span className="text-[10px] font-mono text-slate-500">{displayTime}</span>
+                      <div
+                        key={alert.id}
+                        className={`relative p-[1vh] rounded-lg border transition-all hover:scale-[1.01] cursor-pointer group ${
+                          darkMode
+                            ? `bg-slate-800 border-l-4 ${fatigueColorClasses.border} border-y-slate-700 border-r-slate-700 hover:border-slate-500`
+                            : `bg-white border-l-4 ${fatigueColorClasses.border} border-y-slate-200 border-r-slate-200 shadow-sm hover:shadow-md`
+                        } ${!alert.isWithinShift ? 'opacity-60 grayscale' : ''}`}
+                        onClick={() => handleSelectAlert(alert)}
+                        title={!alert.isWithinShift ? 'Event is outside of shift hours and is ignored by statistics.' : ''}
+                      >
+                        <div className="flex justify-between items-start mb-1">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
+                                fatigueColorClasses.bg
+                              } ${fatigueColorClasses.labelTextColor}`}
+                            >
+                              {alert.fatigue || alert.type || 'Fatigue'}
+                            </span>
+                            <span className="text-[10px] font-mono text-slate-500">{displayTime}</span>
+                          </div>
+                          {alert.isWithinShift ? (
+                            <span
+                              className={`text-[9px] font-bold flex items-center gap-1 animate-pulse ${fatigueColorClasses.text}`}
+                            >
+                              <AlertTriangle size={8} /> ACTIVE
+                            </span>
+                          ) : (
+                            <span className="text-[9px] text-slate-500 font-bold flex items-center gap-1">
+                              <EyeOff size={8} /> IGNORED
+                            </span>
+                          )}
                         </div>
-                        {alert.isWithinShift ? (
-                          <span className="text-[9px] text-red-500 font-bold flex items-center gap-1 animate-pulse">
-                            <AlertTriangle size={8} /> ACTIVE
-                          </span>
-                        ) : (
-                          <span className="text-[9px] text-slate-500 font-bold flex items-center gap-1">
-                            <EyeOff size={8} /> IGNORED
-                          </span>
-                        )}
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className={`p-1.5 rounded-lg ${darkMode ? 'bg-slate-700' : 'bg-slate-100'}`}>
+                            <Truck className={`w-[2vh] h-[2vh] ${darkMode ? 'text-slate-300' : 'text-slate-600'}`} />
+                          </div>
+                          <div>
+                            <h4 className={`font-bold text-[clamp(0.8rem,1vh,1rem)] ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>
+                              {alert.unit || 'Unknown'}
+                            </h4>
+                            <p className="text-[9px] text-slate-500">
+                              {alert.operator || 'Unknown'} • {alert.count}x Today
+                            </p>
+                          </div>
+                        </div>
+                        <div className={`text-[9px] p-1.5 rounded flex justify-between items-center ${darkMode ? 'bg-slate-900' : 'bg-slate-100'}`}>
+                          <div className="flex items-center gap-1 text-slate-500 font-medium">
+                            <Map size={10} />
+                            <span>{getAreaLabel(alert)}</span>
+                          </div>
+                          <div
+                            className={`flex items-center gap-1 font-mono font-bold animate-pulse ${fatigueColorClasses.text}`}
+                          >
+                            <Clock size={10} />
+                            <span>+{getOpenDuration(displayTime)}m</span>
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <div className={`p-1.5 rounded-lg ${darkMode ? 'bg-slate-700' : 'bg-slate-100'}`}>
-                          <Truck className={`w-[2vh] h-[2vh] ${darkMode ? 'text-slate-300' : 'text-slate-600'}`} />
-                        </div>
-                        <div>
-                          <h4 className={`font-bold text-[clamp(0.8rem,1vh,1rem)] ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>
-                            {alert.unit || 'Unknown'}
-                          </h4>
-                          <p className="text-[9px] text-slate-500">
-                            {alert.operator || 'Unknown'} • {alert.count}x Today
-                          </p>
-                        </div>
-                      </div>
-                      <div className={`text-[9px] p-1.5 rounded flex justify-between items-center ${darkMode ? 'bg-slate-900' : 'bg-slate-100'}`}>
-                        <div className="flex items-center gap-1 text-slate-500 font-medium">
-                          <Map size={10} />
-                          <span>{getAreaLabel(alert)}</span>
-                        </div>
-                        <div className="flex items-center gap-1 text-red-400 font-mono font-bold animate-pulse">
-                          <Clock size={10} />
-                          <span>+{getOpenDuration(displayTime)}m</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
+                    );
                   })
                 )}
               </div>

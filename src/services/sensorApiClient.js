@@ -6,7 +6,6 @@ const randomFrom = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const mockOperators = ['Budi S.', 'Dedi S.', 'Rian J.', 'Doni K.', 'Yanto', 'Agus R.'];
 const mockLocationsMining = ['Manado - Front A', 'Manado - Front B', 'Pit Utara'];
 const mockLocationsHauling = ['KM 10', 'KM 22', 'KM 45', 'KM 55'];
-const MAX_FILTER_DEBUG_ENTRIES = 200;
 const DATE_TIME_TEXT_REGEX =
   /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})(?::(\d{2}))?$/;
 
@@ -19,12 +18,16 @@ const areaFilterDebugState = {
 };
 
 const setAreaFilterDebugState = (entries, total, kept) => {
+  const maxEntries = Math.max(
+    1,
+    Number(config.integrator?.maxFilterDebugEntries) || 200
+  );
   areaFilterDebugState.updatedAt = new Date().toISOString();
   areaFilterDebugState.total = total;
   areaFilterDebugState.kept = kept;
   areaFilterDebugState.dropped = Math.max(0, total - kept);
   areaFilterDebugState.entries = Array.isArray(entries)
-    ? entries.slice(-MAX_FILTER_DEBUG_ENTRIES)
+    ? entries.slice(-maxEntries)
     : [];
 };
 
