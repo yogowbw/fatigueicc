@@ -962,6 +962,17 @@ const SCCDashboard = () => {
     const lastAlert = newestAlert || null;
     const lastStatus = lastAlert?.status || 'Unknown';
     const lastArea = lastAlert?.area || 'Unknown';
+    const previousVerifier =
+      sortedAsc
+        .slice()
+        .reverse()
+        .map((item) => item.operator)
+        .find(
+          (name) =>
+            typeof name === 'string' &&
+            name.trim() &&
+            name.trim().toLowerCase() !== 'unknown'
+        ) || 'Unknown Verifier';
 
     const fatigueCounts = {};
     unitAlerts.forEach((alert) => {
@@ -999,6 +1010,7 @@ const SCCDashboard = () => {
       area: lastArea,
       totalEvents,
       lastStatus,
+      previousVerifier,
       lastAlert,
       oldestAlert,
       avgGapMinutes,
@@ -1009,9 +1021,16 @@ const SCCDashboard = () => {
 
   const overdueAlerts = useMemo(() => {
     if (DEMO_MODE) return [];
-    return filteredAlertsByArea.filter((alert) => {
-      return alert.status === 'Open' && getOpenDurationValue(alert.time) > 30;
-    });
+    return filteredAlertsByArea
+      .filter((alert) => {
+        return alert.status === 'Open' && getOpenDurationValue(alert.time) > 30;
+      })
+      .sort((a, b) => {
+        const aDuration = getOpenDurationValue(a.time);
+        const bDuration = getOpenDurationValue(b.time);
+        if (bDuration !== aDuration) return bDuration - aDuration;
+        return getAlertTimestamp(a) - getAlertTimestamp(b);
+      });
   }, [filteredAlertsByArea, currentTime]);
 
   const areaSummary = useMemo(() => {
@@ -1658,6 +1677,19 @@ const SCCDashboard = () => {
                     </div>
                   </div>
 
+                  <div className="grid grid-cols-1 gap-[1.5vh]">
+                    <div
+                      className={`p-[1.5vh] rounded-xl border ${
+                        darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'
+                      }`}
+                    >
+                      <div className="text-xs opacity-60 uppercase tracking-wider">Previous Verificator</div>
+                      <div className="text-xl font-bold text-cyan-400">
+                        {selectedRecurrentSummary.previousVerifier}
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-[1.5vh]">
                     <div
                       className={`p-[1.5vh] rounded-xl border ${
@@ -2267,10 +2299,17 @@ const SCCDashboard = () => {
                       >
                         <div>
                           <div className={`font-bold text-xs ${darkMode ? 'text-white' : 'text-slate-900'}`}>{alert.unit}</div>
-                        <div className="text-[9px] text-slate-500">{getAreaLabel(alert)}</div>
+                          <div className="text-[9px] text-slate-500">{getAreaLabel(alert)}</div>
                         </div>
-                        <div className="text-right">
-                          <div className="text-xs font-black text-red-500 font-mono">+{getOpenDurationValue(alert.time)}m</div>
+                        <div className="min-w-[120px] text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <div className="text-[9px] font-mono text-slate-400">
+                              {alert.time || '-'}
+                            </div>
+                            <div className="text-xs font-black text-red-500 font-mono">
+                              +{getOpenDurationValue(alert.time)}m
+                            </div>
+                          </div>
                           <div className="text-[8px] text-red-400 uppercase font-bold">LATE</div>
                         </div>
                       </div>
