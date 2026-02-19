@@ -39,6 +39,19 @@ VITE_UI_SCALE=1.15
 4. **Frontend fetch** hanya dari backend (bukan ke sensor API)
 5. Jika realtime API gagal, backend tetap mengembalikan **last known value**
 
+## Alur Data ke User (UI Dashboard)
+
+1. Frontend memanggil `GET /api/dashboard/overview` tiap 1 detik.
+2. Backend mengirim `alerts` yang sudah membawa `timestamp`, `date`, dan `time`.
+3. Komponen **Active Fatigue Recent** menampilkan hanya alert dengan `status=Open` dan durasi open `<= 30 menit` (kecuali user sedang filter per lokasi tertentu).
+4. Durasi open dihitung dari waktu event paling akurat:
+   `timestamp` -> `date + time` -> fallback `time`.
+5. Tombol sort **Newest/Oldest** hanya mengubah urutan list, tidak mengubah aturan filter 30 menit.
+6. Komponen **Recurrent Fatigue Units** menampilkan unit yang punya pola berulang (transisi `Followed Up -> Open`).
+7. Saat user klik item di **Recurrent Fatigue Units**, frontend membuka panel detail recurrent unit (`selectedRecurrentUnit`) dan menampilkan ringkasan:
+   total event, status terakhir, oldest/newest alert, dominant fatigue, recurrence count, dan verifier sebelumnya.
+8. Saat user klik item di **Active Fatigue Recent**, frontend membuka panel detail alert (`FATIGUE ALERT DETAIL`) untuk unit/event yang dipilih.
+
 ## Struktur Folder
 
 ```
