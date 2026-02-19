@@ -738,12 +738,54 @@ const buildBasicAuthHeader = () => {
   return `Basic ${token}`;
 };
 
+const normalizeEventTimestampText = (value) => {
+  if (!value) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+  if (DATE_TIME_TEXT_REGEX.test(text)) {
+    return text.replace(' ', 'T');
+  }
+  return text;
+};
+
+const parseDateAndTimeFromEvent = (value) => {
+  if (!value) return { date: null, time: null };
+  const text = String(value).trim();
+  if (!text) return { date: null, time: null };
+
+  const match = text.match(DATE_TIME_TEXT_REGEX);
+  if (match) {
+    return {
+      date: `${match[1]}-${match[2]}-${match[3]}`,
+      time: `${match[4]}:${match[5]}:${match[6] || '00'}`
+    };
+  }
+
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) {
+    return { date: null, time: null };
+  }
+
+  return {
+    date: formatDateLocal(parsed.toISOString()),
+    time: formatTimeLocal(parsed.toISOString())
+  };
+};
+
 const mapIntegratorEventToReading = (event) => {
   const device = event.device || {};
   const sensorId = device.imei || device.name || event.device_id || event.id;
   const status = event.is_followed_up ? 'Followed Up' : 'Open';
   const speed = Number.isFinite(Number(event.speed)) ? Number(event.speed) : null;
-  const timestamp = event.server_time || event.upload_at || event.time;
+  const manualVerificationTime =
+    event.manual_verification_time || event.manualVerificationTime || null;
+  const fallbackEventTime = event.server_time || event.upload_at || event.time;
+  const timestamp = normalizeEventTimestampText(
+    manualVerificationTime || fallbackEventTime
+  );
+  const eventDateTime = parseDateAndTimeFromEvent(
+    manualVerificationTime || fallbackEventTime
+  );
   const area = inferAreaFromEvent(event, device);
   const isWithinShift =
     typeof event?._isWithinShift === 'boolean'
@@ -782,11 +824,14 @@ const mapIntegratorEventToReading = (event) => {
       fatigue: event.name || 'Fatigue',
       area,
       location,
+      date: eventDateTime.date || undefined,
+      time: eventDateTime.time || undefined,
       speed: speed !== null ? `${speed} km/h` : undefined,
       count: 1,
       status,
       alarmType: event.alarm_type,
       alarmLevel: event.level,
+      manualVerificationTime: manualVerificationTime || undefined,
       groupName: device.group_name,
       imei: device.imei,
       deviceId: event.device_id,
