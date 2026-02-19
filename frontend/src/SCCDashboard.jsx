@@ -583,24 +583,46 @@ const SCCDashboard = () => {
     });
   }, []);
 
-  const getOpenDurationValue = (timeStr) => {
-    if (!timeStr) return 0;
-    const parts = timeStr.split(/[:.]/);
-    const h = parseInt(parts[0], 10);
-    const m = parseInt(parts[1], 10);
-    const s = parseInt(parts[2] || '0', 10);
+  const getOpenDurationValue = (timeStr, alert = null) => {
+    let eventTime = null;
 
-    if (isNaN(h) || isNaN(m)) return 0;
+    if (alert?.timestamp) {
+      const parsed = new Date(alert.timestamp);
+      if (!Number.isNaN(parsed.getTime())) {
+        eventTime = parsed;
+      }
+    }
 
-    const eventTime = new Date();
-    eventTime.setHours(h, m, s);
+    if (!eventTime && alert?.date && alert?.time) {
+      const parsed = new Date(`${alert.date}T${alert.time}`);
+      if (!Number.isNaN(parsed.getTime())) {
+        eventTime = parsed;
+      }
+    }
+
+    if (!eventTime && timeStr) {
+      const parts = String(timeStr).split(/[:.]/);
+      const h = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10);
+      const s = parseInt(parts[2] || '0', 10);
+
+      if (!Number.isNaN(h) && !Number.isNaN(m)) {
+        eventTime = new Date(currentTime);
+        eventTime.setHours(h, m, Number.isNaN(s) ? 0 : s, 0);
+        if (eventTime > currentTime) {
+          eventTime.setDate(eventTime.getDate() - 1);
+        }
+      }
+    }
+
+    if (!eventTime) return 0;
 
     const diffMs = currentTime - eventTime;
     const diffMins = Math.floor(diffMs / 60000);
     return diffMins < 0 ? 0 : diffMins;
   };
 
-  const getOpenDuration = (timeStr) => getOpenDurationValue(timeStr);
+  const getOpenDuration = (alert, timeStr) => getOpenDurationValue(timeStr, alert);
 
   const getAreaLabel = useCallback(
     (alert) => alert?.groupName || alert?.area || 'Unknown',
@@ -873,7 +895,7 @@ const SCCDashboard = () => {
 
       // Default behavior: show only recent open alerts for the selected global area.
       const timeStr = DEMO_MODE ? demoTimeString : alert.time;
-      const openMinutes = getOpenDurationValue(timeStr);
+      const openMinutes = getOpenDurationValue(timeStr, alert);
       const isRecentOpen = alert.status === 'Open' && openMinutes <= 30;
       const areaMatch = selectedArea === 'All' || alert.area === selectedArea;
       return areaMatch && isRecentOpen;
@@ -962,18 +984,6 @@ const SCCDashboard = () => {
     const lastAlert = newestAlert || null;
     const lastStatus = lastAlert?.status || 'Unknown';
     const lastArea = lastAlert?.area || 'Unknown';
-    const previousVerifier =
-      sortedAsc
-        .slice()
-        .reverse()
-        .map((item) => item.operator)
-        .find(
-          (name) =>
-            typeof name === 'string' &&
-            name.trim() &&
-            name.trim().toLowerCase() !== 'unknown'
-        ) || 'Unknown Verifier';
-
     const fatigueCounts = {};
     unitAlerts.forEach((alert) => {
       const fatigue = alert.fatigue || alert.type || 'Fatigue';
@@ -987,6 +997,17 @@ const SCCDashboard = () => {
     const sortedAsc = [...unitAlerts].sort(
       (a, b) => getAlertTimestamp(a) - getAlertTimestamp(b)
     );
+    const previousVerifier =
+      sortedAsc
+        .slice()
+        .reverse()
+        .map((item) => item.operator)
+        .find(
+          (name) =>
+            typeof name === 'string' &&
+            name.trim() &&
+            name.trim().toLowerCase() !== 'unknown'
+        ) || 'Unknown Verifier';
     let recurrenceCount = 0;
     let lastSeenStatus = null;
     sortedAsc.forEach((alert) => {
@@ -1023,11 +1044,11 @@ const SCCDashboard = () => {
     if (DEMO_MODE) return [];
     return filteredAlertsByArea
       .filter((alert) => {
-        return alert.status === 'Open' && getOpenDurationValue(alert.time) > 30;
+        return alert.status === 'Open' && getOpenDurationValue(alert.time, alert) > 30;
       })
       .sort((a, b) => {
-        const aDuration = getOpenDurationValue(a.time);
-        const bDuration = getOpenDurationValue(b.time);
+        const aDuration = getOpenDurationValue(a.time, a);
+        const bDuration = getOpenDurationValue(b.time, b);
         if (bDuration !== aDuration) return bDuration - aDuration;
         return getAlertTimestamp(a) - getAlertTimestamp(b);
       });
@@ -2307,7 +2328,7 @@ const SCCDashboard = () => {
                               {alert.time || '-'}
                             </div>
                             <div className="text-xs font-black text-red-500 font-mono">
-                              +{getOpenDurationValue(alert.time)}m
+                              +{getOpenDurationValue(alert.time, alert)}m
                             </div>
                           </div>
                           <div className="text-[8px] text-red-400 uppercase font-bold">LATE</div>
@@ -2602,7 +2623,7 @@ const SCCDashboard = () => {
                             className={`flex items-center gap-1 font-mono font-bold animate-pulse ${fatigueColorClasses.text}`}
                           >
                             <Clock size={10} />
-                            <span>+{getOpenDuration(displayTime)}m</span>
+                            <span>+{getOpenDuration(alert, displayTime)}m</span>
                           </div>
                         </div>
                       </div>

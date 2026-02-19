@@ -478,12 +478,25 @@ const resolveIncrementalRange = () => {
   };
 };
 
-const getIntegratorEventKey = (event) =>
-  event?.id ||
-  event?.identity ||
-  `${event?.device_id || event?.device?.imei || event?.device?.name || 'unknown'}|${
-    event?.server_time || event?.upload_at || event?.time || ''
-  }`;
+const normalizeKeyPart = (value) => {
+  if (value === undefined || value === null) return '';
+  return String(value).trim();
+};
+
+const getIntegratorEventKey = (event) => {
+  const id = normalizeKeyPart(event?.id);
+  if (id) return `id:${id}`;
+
+  const identity = normalizeKeyPart(event?.identity);
+  if (identity) return `identity:${identity}`;
+
+  const device = normalizeKeyPart(
+    event?.device_id || event?.device?.imei || event?.device?.name || 'unknown'
+  );
+  const time = normalizeKeyPart(event?.server_time || event?.upload_at || event?.time || '');
+  if (!device && !time) return null;
+  return `device-time:${device}|${time}`;
+};
 
 const mergeIncrementalEvents = (events, rangeMeta) => {
   if (rangeMeta?.isFullSync) {
