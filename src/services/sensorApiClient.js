@@ -202,6 +202,8 @@ const formatDateLocal = (date) =>
     day: '2-digit'
   }).format(date);
 
+const getTodayLocal = () => formatDateLocal(new Date());
+
 const formatDateTimeLocal = (date) =>
   new Intl.DateTimeFormat('sv-SE', {
     timeZone: config.timeZone,
@@ -745,6 +747,10 @@ const normalizeEventTimestampText = (value) => {
   if (DATE_TIME_TEXT_REGEX.test(text)) {
     return text.replace(' ', 'T');
   }
+  const timeOnlyMatch = text.match(TIME_ONLY_TEXT_REGEX);
+  if (timeOnlyMatch) {
+    return `${getTodayLocal()}T${timeOnlyMatch[1]}:${timeOnlyMatch[2]}:${timeOnlyMatch[3] || '00'}`;
+  }
   return text;
 };
 
@@ -818,9 +824,7 @@ const mapIntegratorEventToReading = (event) => {
   const fallbackEventTime = event.server_time || event.upload_at || event.time;
   const preferredEventTime = resolvePreferredEventTime(event);
   const timestamp =
-    preferredEventTime.timestamp ||
-    normalizeEventTimestampText(fallbackEventTime) ||
-    new Date().toISOString();
+    preferredEventTime.timestamp || new Date().toISOString();
   const area = inferAreaFromEvent(event, device);
   const isWithinShift =
     typeof event?._isWithinShift === 'boolean'
