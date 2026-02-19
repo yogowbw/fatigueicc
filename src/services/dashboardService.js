@@ -131,6 +131,7 @@ const toAlert = (reading) => {
     speed,
     count: meta.count || 1,
     isWithinShift: meta.isWithinShift,
+    manualVerificationTime: meta.manualVerificationTime || null,
     timestamp: reading.timestamp,
     sensorId: reading.sensorId
   };

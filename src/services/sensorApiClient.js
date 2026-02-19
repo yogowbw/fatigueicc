@@ -790,8 +790,6 @@ const isValidTimestampValue = (value) => {
 
 const resolvePreferredEventTime = (event) => {
   const candidates = [
-    event.manual_verification_time,
-    event.manualVerificationTime,
     event.server_time,
     event.upload_at,
     event.time

@@ -16,6 +16,7 @@ import {
   MapPin,
   ShieldAlert,
   Bell,
+  BellOff,
   X,
   LayoutGrid,
   Timer,
@@ -37,6 +38,7 @@ const UI_SCALE_STORAGE_KEY = 'scc_ui_scale';
 const SCALE_MIN = 0.8;
 const SCALE_MAX = 1.6;
 const SCALE_STEP = 0.05;
+const NOTIFICATION_MUTE_STORAGE_KEY = 'scc_notifications_muted';
 
 const buildApiUrl = (path) => {
   if (!API_BASE_URL) return path;
@@ -50,6 +52,10 @@ const SCCDashboard = () => {
   const [isSyncing, setIsSyncing] = useState(false);
 
   const [notifications, setNotifications] = useState([]);
+  const [isNotificationsMuted, setIsNotificationsMuted] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem(NOTIFICATION_MUTE_STORAGE_KEY) === 'true';
+  });
   const [selectedAlert, setSelectedAlert] = useState(null);
   const [selectedRiskArea, setSelectedRiskArea] = useState(null);
   const [selectedRecurrentUnit, setSelectedRecurrentUnit] = useState(null);
@@ -136,6 +142,14 @@ const SCCDashboard = () => {
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(
+      NOTIFICATION_MUTE_STORAGE_KEY,
+      isNotificationsMuted ? 'true' : 'false'
+    );
+  }, [isNotificationsMuted]);
   const seenAlertIdsRef = useRef(new Set());
   const seenAlertQueueRef = useRef([]);
   const hasSeededAlertsRef = useRef(false);
@@ -169,14 +183,14 @@ const SCCDashboard = () => {
   const ITEMS_DELAYED = 5;
 
   const addNotification = useCallback((title, message, type = 'critical', meta = {}) => {
-    if (DEMO_MODE) return;
+    if (DEMO_MODE || isNotificationsMuted) return;
     const id = Date.now() + Math.random();
     const newNotif = { id, title, message, type, ...meta };
     setNotifications((prev) => [newNotif, ...prev]);
     setTimeout(() => {
       setNotifications((prev) => prev.filter((n) => n.id !== id));
     }, 5000);
-  }, []);
+  }, [isNotificationsMuted]);
 
   const removeNotification = useCallback((id) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
@@ -222,6 +236,7 @@ const SCCDashboard = () => {
   );
 
   const playAlarm = useCallback(() => {
+    if (isNotificationsMuted) return;
     try {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       if (!AudioContext) return;
@@ -241,7 +256,7 @@ const SCCDashboard = () => {
     } catch (error) {
       console.warn('Alarm sound blocked:', error);
     }
-  }, []);
+  }, [isNotificationsMuted]);
 
   const getAlertKey = useCallback((alert) => {
     if (!alert) return null;
@@ -623,6 +638,49 @@ const SCCDashboard = () => {
   };
 
   const getOpenDuration = (alert, timeStr) => getOpenDurationValue(timeStr, alert);
+  const getDelayedDurationValue = (alert) => {
+    if (!alert) return 0;
+    const raw = alert.manualVerificationTime;
+    if (raw) {
+      const text = String(raw).trim();
+      let eventTime = null;
+
+      const dateTimeMatch = text.match(
+        /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/
+      );
+      if (dateTimeMatch) {
+        eventTime = new Date(
+          `${dateTimeMatch[1]}-${dateTimeMatch[2]}-${dateTimeMatch[3]}T${dateTimeMatch[4]}:${dateTimeMatch[5]}:${dateTimeMatch[6] || '00'}`
+        );
+      } else {
+        const timeOnlyMatch = text.match(/^(\d{2}):(\d{2})(?::(\d{2}))?$/);
+        if (timeOnlyMatch) {
+          eventTime = new Date(currentTime);
+          eventTime.setHours(
+            Number(timeOnlyMatch[1]),
+            Number(timeOnlyMatch[2]),
+            Number(timeOnlyMatch[3] || '0'),
+            0
+          );
+          if (eventTime > currentTime) {
+            eventTime.setDate(eventTime.getDate() - 1);
+          }
+        } else {
+          const parsed = new Date(text);
+          if (!Number.isNaN(parsed.getTime())) {
+            eventTime = parsed;
+          }
+        }
+      }
+
+      if (eventTime && !Number.isNaN(eventTime.getTime())) {
+        const diffMins = Math.floor((currentTime - eventTime) / 60000);
+        return diffMins < 0 ? 0 : diffMins;
+      }
+    }
+
+    return getOpenDurationValue(alert.time, alert);
+  };
 
   const getAreaLabel = useCallback(
     (alert) => alert?.groupName || alert?.area || 'Unknown',
@@ -1044,11 +1102,11 @@ const SCCDashboard = () => {
     if (DEMO_MODE) return [];
     return filteredAlertsByArea
       .filter((alert) => {
-        return alert.status === 'Open' && getOpenDurationValue(alert.time, alert) > 30;
+        return alert.status === 'Open' && getDelayedDurationValue(alert) > 30;
       })
       .sort((a, b) => {
-        const aDuration = getOpenDurationValue(a.time, a);
-        const bDuration = getOpenDurationValue(b.time, b);
+        const aDuration = getDelayedDurationValue(a);
+        const bDuration = getDelayedDurationValue(b);
         if (bDuration !== aDuration) return bDuration - aDuration;
         return getAlertTimestamp(a) - getAlertTimestamp(b);
       });
@@ -1954,6 +2012,27 @@ const SCCDashboard = () => {
         </div>
 
         <div className="flex items-center gap-[2vw]">
+          <button
+            type="button"
+            onClick={() => {
+              setIsNotificationsMuted((prev) => {
+                const next = !prev;
+                if (next) {
+                  setNotifications([]);
+                }
+                return next;
+              });
+            }}
+            className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-[10px] font-semibold uppercase tracking-wider transition-colors ${
+              darkMode
+                ? 'bg-slate-800 border-slate-700 text-slate-300 hover:text-white hover:border-slate-500'
+                : 'bg-white border-slate-300 text-slate-600 hover:text-slate-800 hover:border-slate-400'
+            }`}
+            title={isNotificationsMuted ? 'Unmute notifications' : 'Mute notifications'}
+          >
+            {isNotificationsMuted ? <BellOff size={12} /> : <Bell size={12} />}
+            <span>{isNotificationsMuted ? 'Muted' : 'Mute'}</span>
+          </button>
 
           <div
             onDoubleClick={() => {
@@ -2328,7 +2407,7 @@ const SCCDashboard = () => {
                               {alert.time || '-'}
                             </div>
                             <div className="text-xs font-black text-red-500 font-mono">
-                              +{getOpenDurationValue(alert.time, alert)}m
+                              +{getDelayedDurationValue(alert)}m
                             </div>
                           </div>
                           <div className="text-[8px] text-red-400 uppercase font-bold">LATE</div>
