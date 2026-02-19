@@ -796,9 +796,9 @@ const isValidTimestampValue = (value) => {
 
 const resolvePreferredEventTime = (event) => {
   const candidates = [
+    event.time,
     event.server_time,
-    event.upload_at,
-    event.time
+    event.upload_at
   ];
 
   for (const candidate of candidates) {
