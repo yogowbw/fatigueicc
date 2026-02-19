@@ -34,6 +34,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Validate Azure Maps key
+        env:
+          VITE_AZURE_MAP_KEY: ${{ secrets.VITE_AZURE_MAP_KEY }}
+        run: |
+          if [ -z "$VITE_AZURE_MAP_KEY" ]; then
+            echo "ERROR: secrets.VITE_AZURE_MAP_KEY is empty or not set."
+            exit 1
+          fi
+
       - name: Build frontend
         env:
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
