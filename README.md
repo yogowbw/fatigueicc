@@ -439,7 +439,7 @@ Catatan:
   - Jika total data > 1 halaman, backend dapat mengambil semua halaman:
     ```
     INTEGRATOR_FETCH_ALL_PAGES=true
-    INTEGRATOR_MAX_PAGES=20
+    INTEGRATOR_MAX_PAGES=0   # 0 = unlimited (ikuti total_pages dari integrator)
     INTEGRATOR_PAGE_SIZE=50
     ```
   - Mode incremental aman (hemat bandwidth + tetap sinkron):

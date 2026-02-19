@@ -944,10 +944,19 @@ const fetchIntegratorEvents = async () => {
     pagination?.total_pages &&
     pagination.total_pages > 1
   ) {
-    const totalPages = Math.min(
-      Number(pagination.total_pages),
-      config.integrator.maxPages
-    );
+    const totalPagesReported = Number(pagination.total_pages);
+    const maxPages = Number(config.integrator.maxPages);
+    const hasExplicitPageCap = Number.isFinite(maxPages) && maxPages > 0;
+    const totalPages = hasExplicitPageCap
+      ? Math.min(totalPagesReported, maxPages)
+      : totalPagesReported;
+
+    if (hasExplicitPageCap && totalPagesReported > maxPages) {
+      console.warn(
+        `[integrator] Page fetch capped at ${maxPages} of ${totalPagesReported}. ` +
+          'Increase INTEGRATOR_MAX_PAGES or set 0 for unlimited.'
+      );
+    }
 
     for (let page = 2; page <= totalPages; page += 1) {
       const pagePayload = buildIntegratorPayload(page, rangeMeta);

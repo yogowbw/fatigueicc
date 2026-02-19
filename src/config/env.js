@@ -130,7 +130,8 @@ const config = {
     devicesGroupedUrl: process.env.INTEGRATOR_DEVICES_GROUPED_URL || '',
     pageSize: toInt(process.env.INTEGRATOR_PAGE_SIZE, 50),
     fetchAllPages: toBool(process.env.INTEGRATOR_FETCH_ALL_PAGES, true),
-    maxPages: toInt(process.env.INTEGRATOR_MAX_PAGES, 20),
+    // 0 or negative means unlimited pages (follow integrator total_pages).
+    maxPages: toInt(process.env.INTEGRATOR_MAX_PAGES, 0),
     requestTimeoutMs: toInt(
       process.env.INTEGRATOR_REQUEST_TIMEOUT_MS,
       toInt(process.env.INTEGRATOR_TIMEOUT_MS, 8000)
