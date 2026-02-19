@@ -748,6 +748,8 @@ const normalizeEventTimestampText = (value) => {
   return text;
 };
 
+const TIME_ONLY_TEXT_REGEX = /^(\d{2}):(\d{2})(?::(\d{2}))?$/;
+
 const parseDateAndTimeFromEvent = (value) => {
   if (!value) return { date: null, time: null };
   const text = String(value).trim();
@@ -758,6 +760,14 @@ const parseDateAndTimeFromEvent = (value) => {
     return {
       date: `${match[1]}-${match[2]}-${match[3]}`,
       time: `${match[4]}:${match[5]}:${match[6] || '00'}`
+    };
+  }
+
+  const timeOnly = text.match(TIME_ONLY_TEXT_REGEX);
+  if (timeOnly) {
+    return {
+      date: getTodayLocal(),
+      time: `${timeOnly[1]}:${timeOnly[2]}:${timeOnly[3] || '00'}`
     };
   }
 
@@ -772,20 +782,47 @@ const parseDateAndTimeFromEvent = (value) => {
   };
 };
 
+const isValidTimestampValue = (value) => {
+  const normalized = normalizeEventTimestampText(value);
+  if (!normalized) return false;
+  return !Number.isNaN(new Date(normalized).getTime());
+};
+
+const resolvePreferredEventTime = (event) => {
+  const candidates = [
+    event.manual_verification_time,
+    event.manualVerificationTime,
+    event.server_time,
+    event.upload_at,
+    event.time
+  ];
+
+  for (const candidate of candidates) {
+    const dateTime = parseDateAndTimeFromEvent(candidate);
+    if (!dateTime.date || !dateTime.time) continue;
+    if (!isValidTimestampValue(candidate)) continue;
+    return {
+      timestamp: normalizeEventTimestampText(candidate),
+      date: dateTime.date,
+      time: dateTime.time
+    };
+  }
+
+  return { timestamp: null, date: null, time: null };
+};
+
 const mapIntegratorEventToReading = (event) => {
   const device = event.device || {};
   const sensorId = device.imei || device.name || event.device_id || event.id;
   const status = event.is_followed_up ? 'Followed Up' : 'Open';
   const speed = Number.isFinite(Number(event.speed)) ? Number(event.speed) : null;
-  const manualVerificationTime =
-    event.manual_verification_time || event.manualVerificationTime || null;
+  const manualVerificationTime = event.manual_verification_time || event.manualVerificationTime || null;
   const fallbackEventTime = event.server_time || event.upload_at || event.time;
-  const timestamp = normalizeEventTimestampText(
-    manualVerificationTime || fallbackEventTime
-  );
-  const eventDateTime = parseDateAndTimeFromEvent(
-    manualVerificationTime || fallbackEventTime
-  );
+  const preferredEventTime = resolvePreferredEventTime(event);
+  const timestamp =
+    preferredEventTime.timestamp ||
+    normalizeEventTimestampText(fallbackEventTime) ||
+    new Date().toISOString();
   const area = inferAreaFromEvent(event, device);
   const isWithinShift =
     typeof event?._isWithinShift === 'boolean'
@@ -824,8 +861,8 @@ const mapIntegratorEventToReading = (event) => {
       fatigue: event.name || 'Fatigue',
       area,
       location,
-      date: eventDateTime.date || undefined,
-      time: eventDateTime.time || undefined,
+      date: preferredEventTime.date || undefined,
+      time: preferredEventTime.time || undefined,
       speed: speed !== null ? `${speed} km/h` : undefined,
       count: 1,
       status,
