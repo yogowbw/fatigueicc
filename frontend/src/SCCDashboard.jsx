@@ -1617,7 +1617,7 @@ const SCCDashboard = () => {
                     <span className="bg-orange-500 text-white p-1.5 rounded">
                       <MapPin size={28} />
                     </span>
-                    CONTACT AREA LEADER
+                    HIGH RISK AREA
                   </h2>
                   <span className="px-3 py-1 bg-orange-100 text-orange-600 rounded-full text-sm font-bold border border-orange-200 uppercase tracking-wider">
                     {selectedRiskAreaSummary.area}
@@ -2553,7 +2553,7 @@ const SCCDashboard = () => {
                 <div className="flex items-center gap-2">
                   <MapPin className="w-[2vh] h-[2vh] text-orange-500" />
                   <h3 className={`text-[clamp(0.7rem,1vh,0.9rem)] font-bold uppercase tracking-wider ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
-                    Contact Area Leader
+                    HIGH RISK AREA
                   </h3>
                 </div>
                 <div className="flex items-center gap-2">
