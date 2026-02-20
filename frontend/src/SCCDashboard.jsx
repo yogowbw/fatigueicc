@@ -644,6 +644,7 @@ const SCCDashboard = () => {
     if (raw) {
       const text = String(raw).trim();
       let eventTime = null;
+      const WITA_OFFSET_MS = 8 * 60 * 60 * 1000;
 
       const dateTimeMatch = text.match(
         /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/
@@ -674,7 +675,8 @@ const SCCDashboard = () => {
       }
 
       if (eventTime && !Number.isNaN(eventTime.getTime())) {
-        const diffMins = Math.floor((currentTime - eventTime) / 60000);
+        const eventTimeWita = new Date(eventTime.getTime() + WITA_OFFSET_MS);
+        const diffMins = Math.floor((currentTime - eventTimeWita) / 60000);
         return diffMins < 0 ? 0 : diffMins;
       }
     }
@@ -2403,9 +2405,6 @@ const SCCDashboard = () => {
                         </div>
                         <div className="min-w-[120px] text-right">
                           <div className="flex items-center justify-end gap-2">
-                            <div className="text-[9px] font-mono text-slate-400">
-                              {alert.time || '-'}
-                            </div>
                             <div className="text-xs font-black text-red-500 font-mono">
                               +{getDelayedDurationValue(alert)}m
                             </div>
