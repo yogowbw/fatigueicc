@@ -599,7 +599,6 @@ const SCCDashboard = () => {
   }, []);
 
   const WITA_OFFSET_HOURS = 8;
-  const WITA_OFFSET_MS = WITA_OFFSET_HOURS * 60 * 60 * 1000;
   const DATE_TIME_REGEX = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/;
   const CLOCK_ONLY_REGEX = /^(\d{2}):(\d{2})(?::(\d{2}))?$/;
 
@@ -679,6 +678,38 @@ const SCCDashboard = () => {
     return Number.isFinite(parsed) ? parsed : null;
   };
 
+  const parseManualVerificationToEpochMs = (value) => {
+    if (!value) return null;
+    const text = String(value).trim();
+    if (!text) return null;
+
+    const full = text.match(DATE_TIME_REGEX);
+    if (full) {
+      // manual_verification_time without timezone is treated as WITA local clock.
+      return toWitaEpochMs(full[1], full[2], full[3], full[4], full[5], full[6] || 0);
+    }
+
+    const timeOnly = text.match(CLOCK_ONLY_REGEX);
+    if (timeOnly) {
+      const nowWita = getCurrentWitaParts();
+      let eventMs = toWitaEpochMs(
+        nowWita.year,
+        nowWita.month,
+        nowWita.day,
+        timeOnly[1],
+        timeOnly[2],
+        timeOnly[3] || 0
+      );
+      if (eventMs > currentTime.getTime()) {
+        eventMs -= 24 * 60 * 60 * 1000;
+      }
+      return eventMs;
+    }
+
+    const parsed = new Date(text).getTime();
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
   const getOpenDurationValue = (timeStr, alert = null) => {
     const eventMs = parseWitaTimeColumnToEpochMs(timeStr);
     if (!Number.isFinite(eventMs)) return 0;
@@ -691,54 +722,10 @@ const SCCDashboard = () => {
     if (!alert) return 0;
     const raw = alert.manualVerificationTime;
     if (raw) {
-      const text = String(raw).trim();
-      let eventEpochMs = null;
-
-      const dateTimeMatch = text.match(
-        /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/
-      );
-      if (dateTimeMatch) {
-        eventEpochMs = Date.UTC(
-          Number(dateTimeMatch[1]),
-          Number(dateTimeMatch[2]) - 1,
-          Number(dateTimeMatch[3]),
-          Number(dateTimeMatch[4]),
-          Number(dateTimeMatch[5]),
-          Number(dateTimeMatch[6] || '0'),
-          0
-        );
-      } else {
-        const timeOnlyMatch = text.match(CLOCK_ONLY_REGEX);
-        if (timeOnlyMatch) {
-          const nowUtc = {
-            year: currentTime.getUTCFullYear(),
-            month: currentTime.getUTCMonth() + 1,
-            day: currentTime.getUTCDate()
-          };
-          eventEpochMs = Date.UTC(
-            nowUtc.year,
-            nowUtc.month - 1,
-            nowUtc.day,
-            Number(timeOnlyMatch[1]),
-            Number(timeOnlyMatch[2]),
-            Number(timeOnlyMatch[3] || '0'),
-            0
-          );
-          if (eventEpochMs + WITA_OFFSET_MS > currentTime.getTime()) {
-            eventEpochMs -= 24 * 60 * 60 * 1000;
-          }
-        } else {
-          const parsed = new Date(text);
-          if (!Number.isNaN(parsed.getTime())) {
-            eventEpochMs = parsed.getTime();
-          }
-        }
-      }
+      const eventEpochMs = parseManualVerificationToEpochMs(raw);
 
       if (Number.isFinite(eventEpochMs)) {
-        const diffMins = Math.floor(
-          (currentTime.getTime() - (eventEpochMs + WITA_OFFSET_MS)) / 60000
-        );
+        const diffMins = Math.floor((currentTime.getTime() - eventEpochMs) / 60000);
         return diffMins < 0 ? 0 : diffMins;
       }
     }
