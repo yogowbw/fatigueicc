@@ -85,6 +85,7 @@ const SCCDashboard = () => {
   const azureMarkerRef = useRef(null);
   const [azureMapUnavailable, setAzureMapUnavailable] = useState(false);
   const currentApiMode = overviewMeta?.currentApiMode || 'unknown';
+  const isMockApiMode = currentApiMode === 'mock';
   const getStoredScale = () => {
     if (typeof window === 'undefined') return null;
     const raw = window.localStorage.getItem(UI_SCALE_STORAGE_KEY);
@@ -923,7 +924,7 @@ const SCCDashboard = () => {
   }, [alerts, selectedArea]);
 
   const highRiskOperators = useMemo(() => {
-    if (DEMO_MODE) return [];
+    if (DEMO_MODE || isMockApiMode) return [];
     const unitGroups = {};
     filteredAlertsByArea.forEach((alert) => {
       const unitKey = alert.unit || alert.sensorId || 'Unknown Unit';
@@ -974,7 +975,7 @@ const SCCDashboard = () => {
         }
         return b.lastSeenAt - a.lastSeenAt;
       });
-  }, [filteredAlertsByArea, getAlertTimestamp, recurrentSortOrder]);
+  }, [DEMO_MODE, isMockApiMode, filteredAlertsByArea, getAlertTimestamp, recurrentSortOrder]);
 
   const highFreqZones = useMemo(() => {
     if (DEMO_MODE) return [];
@@ -1160,7 +1161,7 @@ const SCCDashboard = () => {
   }, [selectedRecurrentUnit, filteredAlertsByArea, getAlertTimestamp]);
 
   const overdueAlerts = useMemo(() => {
-    if (DEMO_MODE) return [];
+    if (DEMO_MODE || isMockApiMode) return [];
     return filteredAlertsByArea
       .filter((alert) => {
         return alert.status === 'Open' && getOpenDurationValue(alert.time, alert) >= 30;
@@ -1171,7 +1172,7 @@ const SCCDashboard = () => {
         if (bDuration !== aDuration) return bDuration - aDuration;
         return getAlertTimestamp(a) - getAlertTimestamp(b);
       });
-  }, [filteredAlertsByArea, currentTime]);
+  }, [DEMO_MODE, isMockApiMode, filteredAlertsByArea, currentTime, getAlertTimestamp]);
 
   const areaSummary = useMemo(() => {
     const summary = {
@@ -1213,14 +1214,17 @@ const SCCDashboard = () => {
     const baseData = filteredAlertsByArea;
 
     const totalToday = baseData.length;
-    const activeOpen = baseData.filter((a) => a.status === 'Open').length;
+    const activeOpenRaw = baseData.filter((a) => a.status === 'Open').length;
+    const activeOpen = isMockApiMode
+      ? Math.min(activeOpenRaw, 3)
+      : activeOpenRaw;
     const followedUpToday = baseData.filter((a) => a.status === 'Followed Up').length;
     const waitingPercent =
       totalToday > 0
         ? Math.round(((totalToday - followedUpToday) / totalToday) * 100)
         : 0;
     return { totalToday, followedUpToday, activeOpen, waitingPercent };
-  }, [filteredAlertsByArea]);
+  }, [filteredAlertsByArea, isMockApiMode]);
 
   const areaFilterDebug = overviewMeta?.areaFilterDebug || null;
   const areaFilterEntries = useMemo(() => {

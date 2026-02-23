@@ -887,7 +887,7 @@ const resolveDevicesUrl = () => {
   if (!config.integrator.baseUrl) return '';
   try {
     const base = new URL(config.integrator.baseUrl);
-    return new URL('/api/v1/devices-all', base).toString();
+    return new URL('/api/v1/devices-all?search=', base).toString();
   } catch (error) {
     return '';
   }

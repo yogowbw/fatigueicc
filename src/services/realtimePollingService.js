@@ -50,9 +50,12 @@ const pollDevicesOnce = async () => {
   try {
     const devices = await fetchDevicesAll();
     const total = devices.length;
-    // Per user request: acc -1 and 0 are offline, everything else is online.
+    // Per user request: access_mode -1 and 0 are offline, everything else is online.
     const offline = devices.filter(
-      (device) => device.acc === -1 || device.acc === 0
+      (device) => {
+        const accessMode = Number(device?.access_mode);
+        return accessMode === -1 || accessMode === 0;
+      }
     ).length;
     const online = total - offline;
     const coverage = total > 0 ? Math.round((online / total) * 100) : 0;
