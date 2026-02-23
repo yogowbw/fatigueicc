@@ -43,14 +43,23 @@ VITE_UI_SCALE=1.15
 
 1. Frontend memanggil `GET /api/dashboard/overview` tiap 1 detik.
 2. Backend mengirim `alerts` yang sudah membawa `timestamp`, `date`, dan `time`.
-3. Komponen **Active Fatigue Recent** menampilkan hanya alert dengan `status=Open` dan durasi open `<= 30 menit` (kecuali user sedang filter per lokasi tertentu).
-4. Durasi open dihitung dari waktu event paling akurat:
-   `timestamp` -> `date + time` -> fallback `time`.
-5. Tombol sort **Newest/Oldest** hanya mengubah urutan list, tidak mengubah aturan filter 30 menit.
-6. Komponen **Recurrent Fatigue Units** menampilkan unit yang punya pola berulang (transisi `Followed Up -> Open`).
-7. Saat user klik item di **Recurrent Fatigue Units**, frontend membuka panel detail recurrent unit (`selectedRecurrentUnit`) dan menampilkan ringkasan:
+3. Backend memfilter event berdasarkan **shift aktif saat ini** (WITA) per area:
+   - Mining: Shift 1 `06:00-17:59`, Shift 2 `18:00-05:59`
+   - Hauling: Shift 1 `05:00-16:59`, Shift 2 `17:00-04:59`
+   Hanya event yang shift-nya sama dengan shift aktif area yang dikirim ke kartu utama.
+4. Komponen **Active Fatigue Recent** menampilkan hanya alert dengan `status=Open` dan durasi open `< 30 menit` (berdasarkan kolom `time`, timezone-safe ke `Asia/Makassar`).
+5. Komponen **Delayed Follow Up** menampilkan alert `status=Open` dengan durasi `>= 30 menit` (acuan `time`), dan label `LATE` dihitung dari selisih `current WITA` terhadap `manual_verification_time` yang distandarkan ke WITA (offset +8 jam).
+6. Tombol sort **Newest/Oldest** hanya mengubah urutan list, tidak mengubah aturan filter durasi.
+7. Komponen **Recurrent Fatigue Units** menampilkan unit yang punya pola berulang (transisi `Followed Up -> Open`).
+8. Saat user klik item di **Recurrent Fatigue Units**, frontend membuka panel detail recurrent unit (`selectedRecurrentUnit`) dan menampilkan ringkasan:
    total event, status terakhir, oldest/newest alert, dominant fatigue, recurrence count, dan verifier sebelumnya.
-8. Saat user klik item di **Active Fatigue Recent**, frontend membuka panel detail alert (`FATIGUE ALERT DETAIL`) untuk unit/event yang dipilih.
+9. Saat user klik item di **Active Fatigue Recent**, frontend membuka panel detail alert (`FATIGUE ALERT DETAIL`) untuk unit/event yang dipilih.
+10. Header dashboard menampilkan jam dan tanggal WITA, serta label shift ringkas:
+   `M : Shift X • H : Shift X`.
+11. Saat terjadi pergantian shift aktif (Mining/Hauling), backend melakukan **cut off** otomatis:
+   - cache event/reset incremental state direset,
+   - Area Filter Log Report direset (data log kembali kosong untuk shift baru),
+   - batch data berikutnya dihitung sebagai baseline shift baru.
 
 ## Struktur Folder
 
@@ -436,6 +445,15 @@ Catatan:
     HAULING_SHIFT2_START=17:00
     HAULING_SHIFT2_END=04:59
     ```
+  - Catatan perilaku shift:
+    - Event integrator dipetakan ke shift berdasarkan waktu event (`time`/`device_time`).
+    - Event hanya dipakai jika sesuai dengan **shift aktif sekarang** (berdasarkan `TIME_ZONE`, default `Asia/Makassar`).
+    - Label header frontend ditampilkan sebagai `M : Shift X • H : Shift X`.
+    - Pada saat shift berganti, backend melakukan reset otomatis state dashboard agar analisa dan monitoring dimulai dari shift aktif yang baru.
+  - Persist data trend (otomatis, tidak perlu ETL manual terpisah):
+    - `dbo.fatigue_event_raw` diisi otomatis dari payload event integrator (raw JSON) per siklus persist.
+    - `dbo.fatigue_event_history` diisi otomatis dari data event yang sudah dinormalisasi (termasuk area/sub_area/shift).
+    - Proses insert berjalan bersamaan dengan job persist existing (`PERSIST_INTERVAL_MS`).
   - Filter global data integrator (contoh KPI):
     ```
     INTEGRATOR_FILTER_COLUMNS=manual_verification_is_true_alarm,level
@@ -462,7 +480,6 @@ Catatan:
     Backend akan fetch delta dari request terakhir dengan overlap kecil untuk mencegah miss event,
     lalu melakukan full-sync periodik agar data tetap konsisten dengan sumber.
    - Untuk melihat semua entri di "Area Filter Log Report" (jika > 200), set: `INTEGRATOR_MAX_FILTER_DEBUG_ENTRIES=1000`.
-   - Untuk mematikan filter shift-window (untuk debug), set: `INTEGRATOR_APPLY_SHIFT_FILTER=false`.
    - Jika request sering timeout, Anda bisa menaikkan batas waktunya: `INTEGRATOR_REQUEST_TIMEOUT_MS=10000` (10 detik).
   - Mapping area bisa disesuaikan dengan keyword/prefix:
     ```

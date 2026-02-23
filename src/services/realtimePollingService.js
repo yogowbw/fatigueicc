@@ -1,5 +1,9 @@
 const { config } = require('../config/env');
-const { fetchAllSensors, fetchDevicesAll } = require('./sensorApiClient');
+const {
+  fetchAllSensors,
+  fetchDevicesAll,
+  enforceShiftCutoff
+} = require('./sensorApiClient');
 const { deviceHealthCache } = require('../cache/deviceHealthCache');
 
 const pollingState = {
@@ -21,6 +25,12 @@ const devicePollingState = {
 const pollOnce = async (cache, eventsCache) => {
   const start = Date.now();
   try {
+    const shiftCutoff = enforceShiftCutoff();
+    if (shiftCutoff.changed) {
+      cache.clear();
+      if (eventsCache) eventsCache.clear();
+    }
+
     const readings = await fetchAllSensors(config.sensorIds);
     const receivedAt = new Date().toISOString();
     const normalized = readings.map((reading) => ({

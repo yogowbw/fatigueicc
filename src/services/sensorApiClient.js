@@ -125,6 +125,16 @@ const integratorIncrementalState = {
   filterDebugByKey: new Map()
 };
 
+const shiftCutoffState = {
+  currentKey: null,
+  lastResetAt: null
+};
+
+const pendingRawEventsState = {
+  byKey: new Map(),
+  order: []
+};
+
 const sleep = (ms) =>
   new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -352,6 +362,110 @@ const getEventShiftInfo = (area, minutes) => {
   return { isWithinShift: false, shiftLabel: null, windowLabel: null };
 };
 
+const getActiveShiftInfo = (area, now = new Date()) => {
+  const shifts = getAreaShiftDefinitions(area);
+  const currentMinutes = getLocalClockMinutes(now);
+  if (!Number.isFinite(currentMinutes) || shifts.length === 0) {
+    return { shiftLabel: null, windowLabel: null, start: null, end: null };
+  }
+
+  const active = shifts.find((shift) => isWithinWindow(currentMinutes, shift));
+  if (!active) {
+    return { shiftLabel: null, windowLabel: null, start: null, end: null };
+  }
+
+  return {
+    shiftLabel: active.name || null,
+    windowLabel: active.start && active.end ? `${active.start}-${active.end}` : null,
+    start: active.start || null,
+    end: active.end || null
+  };
+};
+
+const shouldKeepEventForActiveShift = (area, shiftInfo, activeShiftInfo) => {
+  const hasShiftConfig = getAreaShiftDefinitions(area).length > 0;
+  if (!hasShiftConfig) return shiftInfo.isWithinShift;
+  if (!shiftInfo.isWithinShift) return false;
+  if (!shiftInfo.shiftLabel || !activeShiftInfo.shiftLabel) return true;
+  return shiftInfo.shiftLabel === activeShiftInfo.shiftLabel;
+};
+
+const getCurrentShiftCutoffKey = (now = new Date()) => {
+  const miningShift = getActiveShiftInfo('Mining', now).shiftLabel || 'Unknown';
+  const haulingShift = getActiveShiftInfo('Hauling', now).shiftLabel || 'Unknown';
+  return `M:${miningShift}|H:${haulingShift}`;
+};
+
+const resetAreaFilterDebugState = () => {
+  integratorIncrementalState.filterDebugByKey.clear();
+  setAreaFilterDebugState([], 0, 0);
+};
+
+const resetRawEventQueue = () => {
+  pendingRawEventsState.byKey.clear();
+  pendingRawEventsState.order = [];
+};
+
+const enforceShiftCutoff = (now = new Date()) => {
+  const nextKey = getCurrentShiftCutoffKey(now);
+  if (!shiftCutoffState.currentKey) {
+    shiftCutoffState.currentKey = nextKey;
+    return { changed: false, currentKey: nextKey, previousKey: null, resetAt: null };
+  }
+
+  if (shiftCutoffState.currentKey === nextKey) {
+    return {
+      changed: false,
+      currentKey: nextKey,
+      previousKey: shiftCutoffState.currentKey,
+      resetAt: shiftCutoffState.lastResetAt
+    };
+  }
+
+  const previousKey = shiftCutoffState.currentKey;
+  shiftCutoffState.currentKey = nextKey;
+  shiftCutoffState.lastResetAt = new Date().toISOString();
+  resetIncrementalState();
+  resetAreaFilterDebugState();
+  resetRawEventQueue();
+
+  logIntegratorDebug('Shift cutoff reset', {
+    previousShiftKey: previousKey,
+    currentShiftKey: nextKey,
+    resetAt: shiftCutoffState.lastResetAt
+  });
+
+  return {
+    changed: true,
+    currentKey: nextKey,
+    previousKey,
+    resetAt: shiftCutoffState.lastResetAt
+  };
+};
+
+const enqueueRawEvents = (events) => {
+  (events || []).forEach((event) => {
+    const key = getIntegratorEventKey(event);
+    if (!key || pendingRawEventsState.byKey.has(key)) return;
+    pendingRawEventsState.byKey.set(key, event);
+    pendingRawEventsState.order.push(key);
+  });
+
+  const maxQueue = 10000;
+  while (pendingRawEventsState.order.length > maxQueue) {
+    const oldest = pendingRawEventsState.order.shift();
+    pendingRawEventsState.byKey.delete(oldest);
+  }
+};
+
+const drainPendingRawEvents = () => {
+  const drained = pendingRawEventsState.order
+    .map((key) => pendingRawEventsState.byKey.get(key))
+    .filter(Boolean);
+  resetRawEventQueue();
+  return drained;
+};
+
 const getAreaWindowEnvelope = () => {
   const windows = Object.values(config.areaWindows || {});
   const starts = [];
@@ -373,6 +487,32 @@ const getAreaWindowEnvelope = () => {
     start: Math.min(...starts),
     end: Math.max(...ends)
   };
+};
+
+const getYesterdayLocal = (now = new Date()) => {
+  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  return formatDateLocal(yesterday);
+};
+
+const getActiveShiftRangeStartForArea = (area, now = new Date()) => {
+  const active = getActiveShiftInfo(area, now);
+  if (!active?.start) return null;
+
+  const shiftStartMinutes = timeToMinutes(active.start);
+  const shiftEndMinutes = timeToMinutes(active.end);
+  const nowMinutes = getLocalClockMinutes(now);
+  if (
+    !Number.isFinite(shiftStartMinutes) ||
+    !Number.isFinite(shiftEndMinutes) ||
+    !Number.isFinite(nowMinutes)
+  ) {
+    return null;
+  }
+
+  const isCrossMidnight = shiftStartMinutes > shiftEndMinutes;
+  const hasRolledFromYesterday = isCrossMidnight && nowMinutes <= shiftEndMinutes;
+  const startDate = hasRolledFromYesterday ? getYesterdayLocal(now) : formatDateLocal(now);
+  return `${startDate} ${minutesToClock(shiftStartMinutes)}`;
 };
 
 const getEventLocalMinutes = (event) => {
@@ -414,21 +554,17 @@ const resolveRangeEnd = (date) => {
 
 const buildIntegratorRange = (now = new Date()) => {
   const today = formatDateLocal(now);
-  const envelope = getAreaWindowEnvelope();
-  const rangeStartTime = envelope
-    ? minutesToClock(envelope.start)
-    : config.integrator.rangeStartTime || '00:00:00';
-  const rangeStart = `${today} ${rangeStartTime}`;
+  const shiftStartCandidates = ['Mining', 'Hauling']
+    .map((area) => getActiveShiftRangeStartForArea(area, now))
+    .filter(Boolean);
 
-  let rangeEnd = resolveRangeEnd(now);
-  if (envelope) {
-    const localNowMinutes = getLocalClockMinutes(now);
-    const cappedEnd = Number.isFinite(localNowMinutes)
-      ? Math.min(localNowMinutes, envelope.end)
-      : envelope.end;
-    const safeEnd = Math.max(envelope.start, cappedEnd);
-    rangeEnd = `${today} ${minutesToClock(safeEnd)}`;
+  let rangeStart = `${today} ${config.integrator.rangeStartTime || '00:00:00'}`;
+  if (shiftStartCandidates.length > 0) {
+    rangeStart = shiftStartCandidates.reduce((earliest, current) =>
+      earlierDateTimeText(earliest, current)
+    );
   }
+  const rangeEnd = resolveRangeEnd(now);
 
   return {
     today,
@@ -637,15 +773,16 @@ const isEventWithinAreaWindow = (event) => {
   const area = inferAreaFromEvent(event, event?.device || {});
   const minutes = getEventLocalMinutes(event);
   const shiftInfo = getEventShiftInfo(area, minutes);
-  const result = shiftInfo.isWithinShift;
+  const activeShiftInfo = getActiveShiftInfo(area);
+  const result = shouldKeepEventForActiveShift(area, shiftInfo, activeShiftInfo);
 
   if (config.debugIntegrator) {
     const timeStr = event?.time || event?.device_time || event?.server_time || 'N/A';
     const unitId = event?.device?.name || event?.device_id || 'Unknown';
     const decision = result ? 'KEPT' : 'DROPPED';
     const reason = result
-      ? `within ${shiftInfo.shiftLabel || 'shift'}`
-      : `outside ${area} shift (${shiftInfo.windowLabel || '-'})`;
+      ? `matches active ${shiftInfo.shiftLabel || 'shift'}`
+      : `outside active shift (event: ${shiftInfo.shiftLabel || '-'}, current: ${activeShiftInfo.shiftLabel || '-'})`;
 
     console.log(
       `[filter-check] ${decision} | Unit: ${unitId}, Time: ${timeStr}, Reason: ${reason}`
@@ -659,7 +796,8 @@ const buildFilterDebugEntry = (event) => {
   const area = inferAreaFromEvent(event, event?.device || {});
   const minutes = getEventLocalMinutes(event);
   const shiftInfo = getEventShiftInfo(area, minutes);
-  const kept = shiftInfo.isWithinShift;
+  const activeShiftInfo = getActiveShiftInfo(area);
+  const kept = shouldKeepEventForActiveShift(area, shiftInfo, activeShiftInfo);
   const timeStr = event?.time || event?.device_time || event?.server_time || 'N/A';
   const unitId = event?.device?.name || event?.device_id || 'Unknown';
 
@@ -670,9 +808,11 @@ const buildFilterDebugEntry = (event) => {
     area,
     shift: shiftInfo.shiftLabel,
     window: shiftInfo.windowLabel,
+    activeShift: activeShiftInfo.shiftLabel,
+    activeWindow: activeShiftInfo.windowLabel,
     reason: kept
-      ? `within ${shiftInfo.shiftLabel || 'shift'}`
-      : `outside ${area} shift (${shiftInfo.windowLabel || '-'})`
+      ? `matches active ${shiftInfo.shiftLabel || 'shift'}`
+      : `outside active shift (event: ${shiftInfo.shiftLabel || '-'}, current: ${activeShiftInfo.shiftLabel || '-'})`
   };
 };
 
@@ -965,6 +1105,8 @@ const buildIntegratorHeaders = async () => {
 };
 
 const fetchIntegratorEvents = async () => {
+  enforceShiftCutoff();
+
   if (!config.integrator.baseUrl) {
     throw new Error('INTEGRATOR_BASE_URL is not set');
   }
@@ -1059,6 +1201,7 @@ const fetchIntegratorEvents = async () => {
   }
 
   let list = data?.data?.list || [];
+  enqueueRawEvents(list);
   const pagination = data?.data?.pagination;
 
   if (
@@ -1250,5 +1393,8 @@ module.exports = {
   fetchSensor,
   fetchAllSensors,
   fetchDevicesAll,
-  getAreaFilterDebugState
+  getAreaFilterDebugState,
+  enforceShiftCutoff,
+  getCurrentShiftCutoffKey,
+  drainPendingRawEvents
 };

@@ -2189,10 +2189,6 @@ const SCCDashboard = () => {
             onDoubleClick={() => setShowScaleControls((prev) => !prev)}
             className={`flex flex-col items-end relative ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}
           >
-            <div className={`mb-1 text-[9px] font-semibold uppercase tracking-wider ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-              Mining: <span className="text-blue-500">{currentShiftLabels.mining}</span> • Hauling:{' '}
-              <span className="text-teal-500">{currentShiftLabels.hauling}</span>
-            </div>
             <span className="text-[clamp(1rem,2vh,1.8rem)] font-mono font-semibold leading-none">
               {currentTime.toLocaleTimeString('id-ID', {
                 hour: '2-digit',
@@ -2202,15 +2198,21 @@ const SCCDashboard = () => {
               })}{' '}
               {TIME_LABEL}
             </span>
-            <span className="text-[clamp(0.6rem,0.9vh,0.9rem)] font-medium uppercase tracking-wider mt-0.5">
-              {currentTime.toLocaleDateString('id-ID', {
-                weekday: 'long',
-                day: 'numeric',
-                month: 'short',
-                year: 'numeric',
-                timeZone: TIME_ZONE
-              })}
-            </span>
+            <div className="mt-0.5 flex items-center gap-2">
+              <div className={`text-[9px] font-semibold uppercase tracking-wider ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                M : <span className="text-blue-500">{currentShiftLabels.mining}</span> • H :{' '}
+                <span className="text-teal-500">{currentShiftLabels.hauling}</span>
+              </div>
+              <span className="text-[clamp(0.6rem,0.9vh,0.9rem)] font-medium uppercase tracking-wider">
+                {currentTime.toLocaleDateString('id-ID', {
+                  weekday: 'long',
+                  day: 'numeric',
+                  month: 'short',
+                  year: 'numeric',
+                  timeZone: TIME_ZONE
+                })}
+              </span>
+            </div>
             {showScaleControls && (
               <div
                 onClick={(event) => event.stopPropagation()}
