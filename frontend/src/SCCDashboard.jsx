@@ -39,6 +39,16 @@ const SCALE_MIN = 0.8;
 const SCALE_MAX = 1.6;
 const SCALE_STEP = 0.05;
 const NOTIFICATION_MUTE_STORAGE_KEY = 'scc_notifications_muted';
+const SHIFT_SCHEDULES = {
+  Mining: [
+    { name: 'Shift 1', start: '06:00', end: '17:59' },
+    { name: 'Shift 2', start: '18:00', end: '05:59' }
+  ],
+  Hauling: [
+    { name: 'Shift 1', start: '05:00', end: '16:59' },
+    { name: 'Shift 2', start: '17:00', end: '04:59' }
+  ]
+};
 
 const buildApiUrl = (path) => {
   if (!API_BASE_URL) return path;
@@ -894,6 +904,53 @@ const SCCDashboard = () => {
       hour12: false
     });
   }, []);
+
+  const getCurrentWitaMinuteOfDay = useCallback(() => {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: TIME_ZONE,
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit'
+    }).formatToParts(currentTime);
+    const hour = Number(parts.find((part) => part.type === 'hour')?.value || '0');
+    const minute = Number(parts.find((part) => part.type === 'minute')?.value || '0');
+    return hour * 60 + minute;
+  }, [currentTime]);
+
+  const parseClockToMinute = useCallback((value) => {
+    const [h, m] = String(value || '')
+      .trim()
+      .split(':')
+      .map((part) => Number(part));
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+    return h * 60 + m;
+  }, []);
+
+  const resolveShiftLabel = useCallback(
+    (area, minuteOfDay) => {
+      const shifts = SHIFT_SCHEDULES[area] || [];
+      for (const shift of shifts) {
+        const start = parseClockToMinute(shift.start);
+        const end = parseClockToMinute(shift.end);
+        if (start === null || end === null) continue;
+        if (start <= end) {
+          if (minuteOfDay >= start && minuteOfDay <= end) return shift.name;
+        } else if (minuteOfDay >= start || minuteOfDay <= end) {
+          return shift.name;
+        }
+      }
+      return '-';
+    },
+    [parseClockToMinute]
+  );
+
+  const currentShiftLabels = useMemo(() => {
+    const minuteOfDay = getCurrentWitaMinuteOfDay();
+    return {
+      mining: resolveShiftLabel('Mining', minuteOfDay),
+      hauling: resolveShiftLabel('Hauling', minuteOfDay)
+    };
+  }, [getCurrentWitaMinuteOfDay, resolveShiftLabel]);
 
   const demoTimeString = useMemo(() => {
     if (!DEMO_MODE) return null;
@@ -2132,6 +2189,10 @@ const SCCDashboard = () => {
             onDoubleClick={() => setShowScaleControls((prev) => !prev)}
             className={`flex flex-col items-end relative ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}
           >
+            <div className={`mb-1 text-[9px] font-semibold uppercase tracking-wider ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+              Mining: <span className="text-blue-500">{currentShiftLabels.mining}</span> • Hauling:{' '}
+              <span className="text-teal-500">{currentShiftLabels.hauling}</span>
+            </div>
             <span className="text-[clamp(1rem,2vh,1.8rem)] font-mono font-semibold leading-none">
               {currentTime.toLocaleTimeString('id-ID', {
                 hour: '2-digit',

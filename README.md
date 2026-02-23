@@ -425,6 +425,17 @@ Catatan:
     HAULING_WINDOW_START=05:00
     HAULING_WINDOW_END=17:00
     ```
+  - Definisi shift (untuk label shift dan evaluasi shift per area):
+    ```
+    MINING_SHIFT1_START=06:00
+    MINING_SHIFT1_END=17:59
+    MINING_SHIFT2_START=18:00
+    MINING_SHIFT2_END=05:59
+    HAULING_SHIFT1_START=05:00
+    HAULING_SHIFT1_END=16:59
+    HAULING_SHIFT2_START=17:00
+    HAULING_SHIFT2_END=04:59
+    ```
   - Filter global data integrator (contoh KPI):
     ```
     INTEGRATOR_FILTER_COLUMNS=manual_verification_is_true_alarm,level

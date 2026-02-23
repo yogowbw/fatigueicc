@@ -317,6 +317,41 @@ const isWithinWindow = (minutes, window) => {
   return minutes >= start || minutes <= end;
 };
 
+const getAreaShiftDefinitions = (area) => {
+  const shifts = config.areaShifts?.[area];
+  if (Array.isArray(shifts) && shifts.length > 0) return shifts;
+  const fallbackWindow = config.areaWindows?.[area];
+  if (fallbackWindow?.start && fallbackWindow?.end) {
+    return [
+      {
+        name: 'Shift',
+        start: fallbackWindow.start,
+        end: fallbackWindow.end
+      }
+    ];
+  }
+  return [];
+};
+
+const getEventShiftInfo = (area, minutes) => {
+  const shifts = getAreaShiftDefinitions(area);
+  if (!Number.isFinite(minutes) || shifts.length === 0) {
+    return { isWithinShift: true, shiftLabel: null, windowLabel: null };
+  }
+
+  const matched = shifts.find((shift) => isWithinWindow(minutes, shift));
+  if (matched) {
+    return {
+      isWithinShift: true,
+      shiftLabel: matched.name || null,
+      windowLabel:
+        matched.start && matched.end ? `${matched.start}-${matched.end}` : null
+    };
+  }
+
+  return { isWithinShift: false, shiftLabel: null, windowLabel: null };
+};
+
 const getAreaWindowEnvelope = () => {
   const windows = Object.values(config.areaWindows || {});
   const starts = [];
@@ -600,17 +635,17 @@ const inferAreaFromEvent = (event, device) => {
 
 const isEventWithinAreaWindow = (event) => {
   const area = inferAreaFromEvent(event, event?.device || {});
-  const window = config.areaWindows?.[area];
   const minutes = getEventLocalMinutes(event);
-  const result = isWithinWindow(minutes, window);
+  const shiftInfo = getEventShiftInfo(area, minutes);
+  const result = shiftInfo.isWithinShift;
 
   if (config.debugIntegrator) {
     const timeStr = event?.time || event?.device_time || event?.server_time || 'N/A';
     const unitId = event?.device?.name || event?.device_id || 'Unknown';
     const decision = result ? 'KEPT' : 'DROPPED';
     const reason = result
-      ? 'within shift'
-      : `outside ${area} shift (${window?.start}-${window?.end})`;
+      ? `within ${shiftInfo.shiftLabel || 'shift'}`
+      : `outside ${area} shift (${shiftInfo.windowLabel || '-'})`;
 
     console.log(
       `[filter-check] ${decision} | Unit: ${unitId}, Time: ${timeStr}, Reason: ${reason}`
@@ -622,9 +657,9 @@ const isEventWithinAreaWindow = (event) => {
 
 const buildFilterDebugEntry = (event) => {
   const area = inferAreaFromEvent(event, event?.device || {});
-  const window = config.areaWindows?.[area];
   const minutes = getEventLocalMinutes(event);
-  const kept = isWithinWindow(minutes, window);
+  const shiftInfo = getEventShiftInfo(area, minutes);
+  const kept = shiftInfo.isWithinShift;
   const timeStr = event?.time || event?.device_time || event?.server_time || 'N/A';
   const unitId = event?.device?.name || event?.device_id || 'Unknown';
 
@@ -633,10 +668,11 @@ const buildFilterDebugEntry = (event) => {
     unit: unitId,
     time: timeStr,
     area,
-    window: window ? `${window.start}-${window.end}` : null,
+    shift: shiftInfo.shiftLabel,
+    window: shiftInfo.windowLabel,
     reason: kept
-      ? 'within shift'
-      : `outside ${area} shift (${window?.start}-${window?.end})`
+      ? `within ${shiftInfo.shiftLabel || 'shift'}`
+      : `outside ${area} shift (${shiftInfo.windowLabel || '-'})`
   };
 };
 
@@ -826,10 +862,11 @@ const mapIntegratorEventToReading = (event) => {
   const timestamp =
     preferredEventTime.timestamp || new Date().toISOString();
   const area = inferAreaFromEvent(event, device);
+  const shiftInfo = getEventShiftInfo(area, getEventLocalMinutes(event));
   const isWithinShift =
     typeof event?._isWithinShift === 'boolean'
       ? event._isWithinShift
-      : isEventWithinAreaWindow(event);
+      : shiftInfo.isWithinShift;
   const driverName =
     event.driver?.name || event.driver_name || event.driverName || null;
 
@@ -870,6 +907,7 @@ const mapIntegratorEventToReading = (event) => {
       status,
       alarmType: event.alarm_type,
       alarmLevel: event.level,
+      shiftLabel: shiftInfo.shiftLabel || null,
       manualVerificationTime: manualVerificationTime || undefined,
       groupName: device.group_name,
       imei: device.imei,

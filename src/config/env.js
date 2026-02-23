@@ -21,6 +21,12 @@ const toList = (value, fallback = '') =>
     .map((item) => item.trim())
     .filter(Boolean);
 
+const buildShiftDefinition = (name, start, end) => ({
+  name,
+  start,
+  end
+});
+
 const defaultSensorIds = [
   'DT-402',
   'DT-112',
@@ -81,6 +87,32 @@ const config = {
       start: process.env.HAULING_WINDOW_START || '05:00',
       end: process.env.HAULING_WINDOW_END || '17:00'
     }
+  },
+  areaShifts: {
+    Mining: [
+      buildShiftDefinition(
+        'Shift 1',
+        process.env.MINING_SHIFT1_START || '06:00',
+        process.env.MINING_SHIFT1_END || '17:59'
+      ),
+      buildShiftDefinition(
+        'Shift 2',
+        process.env.MINING_SHIFT2_START || '18:00',
+        process.env.MINING_SHIFT2_END || '05:59'
+      )
+    ],
+    Hauling: [
+      buildShiftDefinition(
+        'Shift 1',
+        process.env.HAULING_SHIFT1_START || '05:00',
+        process.env.HAULING_SHIFT1_END || '16:59'
+      ),
+      buildShiftDefinition(
+        'Shift 2',
+        process.env.HAULING_SHIFT2_START || '17:00',
+        process.env.HAULING_SHIFT2_END || '04:59'
+      )
+    ]
   },
   areaMapping: {
     haulingGroupKeywords: toList(
