@@ -1,4 +1,5 @@
 const { config } = require('../config/env');
+const { getSensorApiMode } = require('../config/runtimeState');
 const { sql, getPool } = require('../db/sqlServer');
 const { getEventKey } = require('../cache/eventCache');
 const {
@@ -302,8 +303,11 @@ const buildHistoryRows = (readings) => {
   });
 };
 
+const isIntegratorPipelineActive = () =>
+  getSensorApiMode() === 'real' && Boolean(config.integrator?.baseUrl);
+
 const getReadingsForPersist = (cache, eventsCache) => {
-  if (config.sensorApiMode === 'integrator' && eventsCache) {
+  if (isIntegratorPipelineActive() && eventsCache) {
     const readings = eventsCache.getAll();
     return readings.filter((reading) => {
       const key = getEventKey(reading);
@@ -315,9 +319,10 @@ const getReadingsForPersist = (cache, eventsCache) => {
 };
 
 const persistSnapshot = async (cache, eventsCache) => {
+  const integratorActive = isIntegratorPipelineActive();
   const shiftKey = getCurrentShiftCutoffKey();
   if (
-    config.sensorApiMode === 'integrator' &&
+    integratorActive &&
     persistState.currentShiftKey &&
     persistState.currentShiftKey !== shiftKey
   ) {
@@ -326,7 +331,7 @@ const persistSnapshot = async (cache, eventsCache) => {
   persistState.currentShiftKey = shiftKey;
 
   const readings = getReadingsForPersist(cache, eventsCache);
-  const rawEvents = config.sensorApiMode === 'integrator' ? drainPendingRawEvents() : [];
+  const rawEvents = integratorActive ? drainPendingRawEvents() : [];
   if (!readings.length && rawEvents.length === 0) {
     return { inserted: 0, rawInserted: 0, historyInserted: 0 };
   }
@@ -340,7 +345,7 @@ const persistSnapshot = async (cache, eventsCache) => {
   let rawInserted = 0;
   let historyInserted = 0;
 
-  if (config.sensorApiMode === 'integrator') {
+  if (integratorActive) {
     try {
       rawInserted = await insertRowsDynamic(pool, 'fatigue_event_raw', buildRawRows(rawEvents));
     } catch (error) {
@@ -358,7 +363,7 @@ const persistSnapshot = async (cache, eventsCache) => {
     }
   }
 
-  if (config.sensorApiMode === 'integrator') {
+  if (integratorActive) {
     readings.forEach((reading) => trackPersistedId(getEventKey(reading)));
   }
 

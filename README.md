@@ -124,7 +124,7 @@ Jika ingin tahap awalnya hanya memastikan data masuk ke SQL:
 
 1. Pastikan `.env` sudah diisi dengan SQL lokal dan API sensor:
    ```
-   SENSOR_API_MODE=integrator
+   SENSOR_API_MODE=real
    INTEGRATOR_BASE_URL=https://api-platform-integrator.transtrack.co/api/v1/events/
    INTEGRATOR_USERNAME=your_username
    INTEGRATOR_PASSWORD=your_password
@@ -403,8 +403,8 @@ Lihat `.env.example`.
 
 Catatan:
 - `SENSOR_API_MODE=mock` akan menghasilkan data dummy agar backend bisa langsung dicoba.
-- Jika memakai API integrator, set `SENSOR_API_MODE=integrator` dan isi `INTEGRATOR_*`.
-- Jika realtime API lain sudah siap, set `SENSOR_API_MODE=real` dan isi `SENSOR_API_BASE_URL`.
+- Untuk pipeline integrator (mode produksi dashboard), gunakan `SENSOR_API_MODE=real` dan isi `INTEGRATOR_*`.
+- Jika realtime API lain sudah siap, tetap gunakan `SENSOR_API_MODE=real` dan isi `SENSOR_API_BASE_URL`.
 - Mapping data realtime ke struktur frontend bisa diubah di `src/services/dashboardService.js`.
 - `TIME_ZONE` menentukan tanggal/waktu yang dipakai backend (default `Asia/Jakarta`).
 - Untuk kebutuhan **total sensor on/off**, backend mendukung API devices-all:
@@ -454,6 +454,7 @@ Catatan:
     - `dbo.fatigue_event_raw` diisi otomatis dari payload event integrator (raw JSON) per siklus persist.
     - `dbo.fatigue_event_history` diisi otomatis dari data event yang sudah dinormalisasi (termasuk area/sub_area/shift).
     - Proses insert berjalan bersamaan dengan job persist existing (`PERSIST_INTERVAL_MS`).
+    - Tetap mengikuti mode runtime dashboard yang aktif: `real` (integrator aktif) / `mock` (tanpa insert trend).
   - Filter global data integrator (contoh KPI):
     ```
     INTEGRATOR_FILTER_COLUMNS=manual_verification_is_true_alarm,level

@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "frontend/**"
+      - "README.md"
       - ".github/workflows/deploy-frontend-front-fatigueicc.yml"
   workflow_dispatch:
 
@@ -58,6 +59,7 @@ jobs:
         run: |
           mkdir -p ../frontend-release
           cp -r dist/* ../frontend-release/
+          if [ -f ../README.md ]; then cp ../README.md ../frontend-release/README.md; fi
           cat > ../frontend-release/server.js << 'EOF'
           const http = require('http');
           const https = require('https');
