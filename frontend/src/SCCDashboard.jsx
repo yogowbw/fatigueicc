@@ -2715,9 +2715,9 @@ const SCCDashboard = () => {
                           darkMode
                             ? `bg-slate-800 border-l-4 ${fatigueColorClasses.border} border-y-slate-700 border-r-slate-700 hover:border-slate-500`
                             : `bg-white border-l-4 ${fatigueColorClasses.border} border-y-slate-200 border-r-slate-200 shadow-sm hover:shadow-md`
-                        } ${!alert.isWithinShift ? 'opacity-60 grayscale' : ''}`}
+                        } ${alert.isWithinShift === false ? 'opacity-60 grayscale' : ''}`}
                         onClick={() => handleSelectAlert(alert)}
-                        title={!alert.isWithinShift ? 'Event is outside of shift hours and is ignored by statistics.' : ''}
+                        title={alert.isWithinShift === false ? 'Event is outside of shift hours and is ignored by statistics.' : ''}
                       >
                         <div className="flex justify-between items-start mb-1">
                           <div className="flex items-center gap-2">
@@ -2730,7 +2730,7 @@ const SCCDashboard = () => {
                             </span>
                             <span className="text-[10px] font-mono text-slate-500">{displayTime}</span>
                           </div>
-                          {alert.isWithinShift ? (
+                          {alert.isWithinShift !== false ? (
                             <span
                               className={`text-[9px] font-bold flex items-center gap-1 animate-pulse ${fatigueColorClasses.text}`}
                             >
