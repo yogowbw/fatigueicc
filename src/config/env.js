@@ -80,8 +80,8 @@ const config = {
     .filter(Boolean),
   areaWindows: {
     Mining: {
-      start: process.env.MINING_WINDOW_START || '06:00',
-      end: process.env.MINING_WINDOW_END || '18:00'
+      start: process.env.MINING_WINDOW_START || '06:45',
+      end: process.env.MINING_WINDOW_END || '18:15'
     },
     Hauling: {
       start: process.env.HAULING_WINDOW_START || '05:00',
@@ -92,13 +92,13 @@ const config = {
     Mining: [
       buildShiftDefinition(
         'Shift 1',
-        process.env.MINING_SHIFT1_START || '06:00',
-        process.env.MINING_SHIFT1_END || '17:59'
+        process.env.MINING_SHIFT1_START || '06:45',
+        process.env.MINING_SHIFT1_END || '18:14'
       ),
       buildShiftDefinition(
         'Shift 2',
-        process.env.MINING_SHIFT2_START || '18:00',
-        process.env.MINING_SHIFT2_END || '05:59'
+        process.env.MINING_SHIFT2_START || '18:15',
+        process.env.MINING_SHIFT2_END || '06:14'
       )
     ],
     Hauling: [
