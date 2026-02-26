@@ -43,7 +43,7 @@ VITE_UI_SCALE=1.15
 
 1. Frontend memanggil `GET /api/dashboard/overview` tiap 1 detik.
 2. Backend mengirim `alerts` yang sudah membawa `timestamp`, `date`, dan `time`.
-3. Backend memfilter event berdasarkan **shift aktif saat ini** (WITA) per area:
+3. Backend memfilter event berdasarkan **shift aktif saat ini** per area (WITA):
    - Mining: Shift 1 `06:45-18:14`, Shift 2 `18:15-06:14`
    - Hauling: Shift 1 `05:00-16:59`, Shift 2 `17:00-04:59`
    Hanya event yang shift-nya sama dengan shift aktif area yang dikirim ke kartu utama.
