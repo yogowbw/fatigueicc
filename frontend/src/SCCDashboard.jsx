@@ -41,8 +41,8 @@ const SCALE_STEP = 0.05;
 const NOTIFICATION_MUTE_STORAGE_KEY = 'scc_notifications_muted';
 const SHIFT_SCHEDULES = {
   Mining: [
-    { name: 'Shift 1', start: '06:00', end: '17:59' },
-    { name: 'Shift 2', start: '18:00', end: '05:59' }
+    { name: 'Shift 1', start: '06:45', end: '18:14' },
+    { name: 'Shift 2', start: '18:15', end: '06:14' }
   ],
   Hauling: [
     { name: 'Shift 1', start: '05:00', end: '16:59' },

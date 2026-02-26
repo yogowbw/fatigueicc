@@ -44,7 +44,7 @@ VITE_UI_SCALE=1.15
 1. Frontend memanggil `GET /api/dashboard/overview` tiap 1 detik.
 2. Backend mengirim `alerts` yang sudah membawa `timestamp`, `date`, dan `time`.
 3. Backend memfilter event berdasarkan **shift aktif saat ini** (WITA) per area:
-   - Mining: Shift 1 `06:00-17:59`, Shift 2 `18:00-05:59`
+   - Mining: Shift 1 `06:45-18:14`, Shift 2 `18:15-06:14`
    - Hauling: Shift 1 `05:00-16:59`, Shift 2 `17:00-04:59`
    Hanya event yang shift-nya sama dengan shift aktif area yang dikirim ke kartu utama.
 4. Komponen **Active Fatigue Recent** menampilkan hanya alert dengan `status=Open` dan durasi open `< 30 menit` (berdasarkan kolom `time`, timezone-safe ke `Asia/Makassar`).
@@ -429,17 +429,17 @@ Catatan:
   - KPI fatigue memakai filter jenis: `FATIGUE_TYPES=Eyes Closing,Yawning`.
   - Window per area (untuk perhitungan KPI):
     ```
-    MINING_WINDOW_START=06:00
-    MINING_WINDOW_END=18:00
+    MINING_WINDOW_START=06:45
+    MINING_WINDOW_END=18:15
     HAULING_WINDOW_START=05:00
     HAULING_WINDOW_END=17:00
     ```
   - Definisi shift (untuk label shift dan evaluasi shift per area):
     ```
-    MINING_SHIFT1_START=06:00
-    MINING_SHIFT1_END=17:59
-    MINING_SHIFT2_START=18:00
-    MINING_SHIFT2_END=05:59
+    MINING_SHIFT1_START=06:45
+    MINING_SHIFT1_END=18:14
+    MINING_SHIFT2_START=18:15
+    MINING_SHIFT2_END=06:14
     HAULING_SHIFT1_START=05:00
     HAULING_SHIFT1_END=16:59
     HAULING_SHIFT2_START=17:00
