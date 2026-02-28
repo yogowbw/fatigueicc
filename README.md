@@ -47,16 +47,19 @@ VITE_UI_SCALE=1.15
    - Mining: Shift 1 `06:45-18:14`, Shift 2 `18:15-06:14`
    - Hauling: Shift 1 `05:00-16:59`, Shift 2 `17:00-04:59`
    Hanya event yang shift-nya sama dengan shift aktif area yang dikirim ke kartu utama.
-4. Komponen **Active Fatigue Recent** menampilkan hanya alert dengan `status=Open` dan durasi open `< 30 menit` (berdasarkan kolom `time`, timezone-safe ke `Asia/Makassar`).
-5. Komponen **Delayed Follow Up** menampilkan alert `status=Open` dengan durasi `>= 30 menit` (acuan `time`), dan label `LATE` dihitung dari selisih `current WITA` terhadap `manual_verification_time` yang distandarkan ke WITA (offset +8 jam).
-6. Tombol sort **Newest/Oldest** hanya mengubah urutan list, tidak mengubah aturan filter durasi.
-7. Komponen **Recurrent Fatigue Units** menampilkan unit yang punya pola berulang (transisi `Followed Up -> Open`).
-8. Saat user klik item di **Recurrent Fatigue Units**, frontend membuka panel detail recurrent unit (`selectedRecurrentUnit`) dan menampilkan ringkasan:
+4. Backend menerapkan rule deduplikasi alarm per unit dalam window 10 menit:
+   - Jika unit yang sama memicu alarm berulang dalam rentang `<= 10 menit`, dihitung **1 event**.
+   - Event berikutnya baru dihitung normal jika selisih waktu `> 10 menit` (mulai menit ke-11).
+5. Komponen **Active Fatigue Recent** menampilkan hanya alert dengan `status=Open` dan durasi open `< 30 menit` (berdasarkan kolom `time`, timezone-safe ke `Asia/Makassar`).
+6. Komponen **Delayed Follow Up** menampilkan alert `status=Open` dengan durasi `>= 30 menit` (acuan `time`), dan label `LATE` dihitung dari selisih `current WITA` terhadap `manual_verification_time` yang distandarkan ke WITA (offset +8 jam).
+7. Tombol sort **Newest/Oldest** hanya mengubah urutan list, tidak mengubah aturan filter durasi.
+8. Komponen **Recurrent Fatigue Units** menampilkan unit yang punya pola berulang (transisi `Followed Up -> Open`).
+9. Saat user klik item di **Recurrent Fatigue Units**, frontend membuka panel detail recurrent unit (`selectedRecurrentUnit`) dan menampilkan ringkasan:
    total event, status terakhir, oldest/newest alert, dominant fatigue, recurrence count, dan verifier sebelumnya.
-9. Saat user klik item di **Active Fatigue Recent**, frontend membuka panel detail alert (`FATIGUE ALERT DETAIL`) untuk unit/event yang dipilih.
-10. Header dashboard menampilkan jam dan tanggal WITA, serta label shift ringkas:
+10. Saat user klik item di **Active Fatigue Recent**, frontend membuka panel detail alert (`FATIGUE ALERT DETAIL`) untuk unit/event yang dipilih.
+11. Header dashboard menampilkan jam dan tanggal WITA, serta label shift ringkas:
    `M : Shift X • H : Shift X`.
-11. Saat terjadi pergantian shift aktif (Mining/Hauling), backend melakukan **cut off** otomatis:
+12. Saat terjadi pergantian shift aktif (Mining/Hauling), backend melakukan **cut off** otomatis:
    - cache event/reset incremental state direset,
    - Area Filter Log Report direset (data log kembali kosong untuk shift baru),
    - batch data berikutnya dihitung sebagai baseline shift baru.
@@ -452,7 +455,8 @@ Catatan:
     - Pada saat shift berganti, backend melakukan reset otomatis state dashboard agar analisa dan monitoring dimulai dari shift aktif yang baru.
   - Persist data trend (otomatis, tidak perlu ETL manual terpisah):
     - `dbo.fatigue_event_raw` diisi otomatis dari payload event integrator (raw JSON) per siklus persist.
-    - `dbo.fatigue_event_history` diisi otomatis dari data event yang sudah dinormalisasi (termasuk area/sub_area/shift).
+    - `dbo.fatigue_event_history` diisi otomatis dari data event yang sudah dinormalisasi (termasuk area/sub_area/shift) **dan sudah mengikuti deduplikasi alarm per unit 10 menit**.
+      Event unit yang sama dalam `<= 10 menit` hanya menyimpan 1 event; event berikutnya dihitung lagi jika `> 10 menit`.
     - Proses insert berjalan bersamaan dengan job persist existing (`PERSIST_INTERVAL_MS`).
     - Tetap mengikuti mode runtime dashboard yang aktif: `real` (integrator aktif) / `mock` (tanpa insert trend).
   - Filter global data integrator (contoh KPI):

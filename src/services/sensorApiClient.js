@@ -135,6 +135,8 @@ const pendingRawEventsState = {
   order: []
 };
 
+const SAME_UNIT_DEDUP_WINDOW_MS = 10 * 60 * 1000;
+
 const sleep = (ms) =>
   new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -715,6 +717,73 @@ const getMergedSortedEvents = () =>
     const bTime = new Date(b?.server_time || b?.upload_at || b?.time || 0).getTime();
     return bTime - aTime;
   });
+
+const getEventUnitKey = (event) => {
+  const unit =
+    event?.device?.name ||
+    event?.device_id ||
+    event?.device?.imei ||
+    event?.id;
+  return normalizeKeyPart(unit).toLowerCase();
+};
+
+const getEventTimestampMs = (event) => {
+  const candidates = [
+    event?.time,
+    event?.device_time,
+    event?.server_time,
+    event?.upload_at,
+    event?.created_at
+  ];
+
+  for (const value of candidates) {
+    const fromText = dateTimeTextToMs(value);
+    if (Number.isFinite(fromText)) return fromText;
+
+    const parsed = new Date(value).getTime();
+    if (Number.isFinite(parsed)) return parsed;
+  }
+
+  return null;
+};
+
+const deduplicateEventsByUnitWindow = (events) => {
+  if (!Array.isArray(events) || events.length <= 1) return events || [];
+
+  const sorted = [...events].sort((a, b) => {
+    const aMs = getEventTimestampMs(a);
+    const bMs = getEventTimestampMs(b);
+    if (Number.isFinite(aMs) && Number.isFinite(bMs)) return aMs - bMs;
+    if (Number.isFinite(aMs)) return -1;
+    if (Number.isFinite(bMs)) return 1;
+    return 0;
+  });
+
+  const lastKeptByUnit = new Map();
+  const deduped = [];
+
+  sorted.forEach((event) => {
+    const unitKey = getEventUnitKey(event);
+    const timestampMs = getEventTimestampMs(event);
+    if (!unitKey || !Number.isFinite(timestampMs)) {
+      deduped.push(event);
+      return;
+    }
+
+    const previousKeptMs = lastKeptByUnit.get(unitKey);
+    if (
+      Number.isFinite(previousKeptMs) &&
+      timestampMs - previousKeptMs <= SAME_UNIT_DEDUP_WINDOW_MS
+    ) {
+      return;
+    }
+
+    lastKeptByUnit.set(unitKey, timestampMs);
+    deduped.push(event);
+  });
+
+  return deduped;
+};
 const normalizeText = (value) => String(value || '').toLowerCase();
 
 const matchesAnyKeyword = (value, keywords) => {
@@ -1265,7 +1334,9 @@ const fetchIntegratorEvents = async () => {
     kept: getAreaFilterDebugState().kept
   });
 
-  mergeIncrementalEvents(filteredList, rangeMeta);
+  const dedupedList = deduplicateEventsByUnitWindow(filteredList);
+
+  mergeIncrementalEvents(dedupedList, rangeMeta);
   const mergedEvents = getMergedSortedEvents();
 
   logIntegratorDebug('Incremental state', {
@@ -1273,6 +1344,7 @@ const fetchIntegratorEvents = async () => {
     rangeStart: rangeMeta.rangeStart,
     rangeEnd: rangeMeta.rangeEnd,
     batchKept: filteredList.length,
+    batchDeduped: dedupedList.length,
     mergedTotal: mergedEvents.length
   });
 
